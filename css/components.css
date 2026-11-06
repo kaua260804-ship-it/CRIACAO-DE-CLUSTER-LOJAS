@@ -80,6 +80,19 @@
 .table .col-seq { font-family: var(--font-mono); white-space: nowrap; }
 .table .col-desc { max-width: 320px; }
 
+/* Cabeçalhos ordenáveis */
+.table thead th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+.table thead th[data-sort]:hover { background: #e4e9f0; }
+.table thead th[data-sort]:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+.table thead th.th--sorted { color: var(--color-primary-strong); }
+.th__arrow { font-size: .7rem; color: var(--color-primary); }
+
 /* ---------- Status ---------- */
 .status {
   display: inline-block;
