@@ -1,0 +1,66 @@
+/* Header, filtros, conteúdo, rodapé, responsivo (mobile-first) */
+
+.app-header {
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+.app-header__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.app-header__title { color: var(--color-primary-strong); }
+.app-header__subtitle { color: var(--color-text-muted); font-size: .85rem; }
+.app-header__actions { display: flex; gap: var(--space-2); }
+
+.app-main {
+  flex: 1;
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Filtros */
+.filters { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: var(--space-4); }
+.filters__title { font-size: .85rem; text-transform: uppercase; letter-spacing: .05em; color: var(--color-text-muted); margin-bottom: var(--space-3); }
+.filters__grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+.field--actions { justify-content: flex-end; }
+
+/* Resultados */
+.results__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); }
+.results__title { font-size: 1rem; }
+.results__count { color: var(--color-text-muted); font-size: .85rem; }
+
+/* Rodapé */
+.app-footer {
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-3) var(--space-4);
+  text-align: center;
+}
+.app-footer__status { color: var(--color-text-muted); font-size: .8rem; }
+
+/* Breakpoints */
+@media (min-width: 640px) {
+  .app-header__inner { flex-direction: row; align-items: center; justify-content: space-between; }
+  .filters__grid { grid-template-columns: repeat(2, 1fr); }
+  .app-main { padding: var(--space-5); }
+}
+
+@media (min-width: 1024px) {
+  .filters__grid { grid-template-columns: repeat(4, 1fr); align-items: end; }
+  .field--actions { grid-column: span 4; flex-direction: row; justify-content: flex-end; }
+  .app-header__title { font-size: 1.5rem; }
+}

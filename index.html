@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consulta de Clusters — Gestão de Produtos</title>
+
+  <link rel="stylesheet" href="css/base.css" />
+  <link rel="stylesheet" href="css/components.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+  <link rel="stylesheet" href="css/tooltip.css" />
+
+  <!-- SheetJS (leitura e exportação XLSX). Carregado antes de main.js rodar. -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <!-- config.js é importado via módulo (js/main.js e js/api.js).
+       NÃO declarar <script src="js/config.js"> aqui. -->
+</head>
+<body>
+  <header class="app-header" role="banner">
+    <div class="app-header__inner">
+      <div class="app-header__brand">
+        <h1 class="app-header__title">Consulta de Clusters</h1>
+        <p class="app-header__subtitle">Gestão de produtos por loja · Base + Vendas + Decisão</p>
+      </div>
+      <div class="app-header__actions">
+        <button id="btnExport" class="btn btn--ghost" type="button" aria-label="Exportar resultados em XLSX">
+          Exportar XLSX
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="app-main" role="main">
+    <section class="filters" aria-labelledby="filters-title">
+      <h2 id="filters-title" class="filters__title">Filtros</h2>
+
+      <form id="filtersForm" class="filters__grid" onsubmit="return false;">
+        <div class="field">
+          <label for="fSearch">Buscar</label>
+          <input id="fSearch" type="search" placeholder="DESC, DESC RED ou SEQ PROD" autocomplete="off" />
+        </div>
+
+        <div class="field">
+          <label for="fCategoria">Categoria</label>
+          <select id="fCategoria"><option value="">TODAS</option></select>
+        </div>
+
+        <div class="field">
+          <label for="fGrupo">Grupo</label>
+          <select id="fGrupo"><option value="">TODOS</option></select>
+        </div>
+
+        <div class="field">
+          <label for="fSubgrupo">Subgrupo</label>
+          <select id="fSubgrupo"><option value="">TODOS</option></select>
+        </div>
+
+        <div class="field">
+          <label for="fStatus">Status</label>
+          <select id="fStatus">
+            <option value="TODOS">TODOS</option>
+            <option value="COM VENDA">COM VENDA</option>
+            <option value="SEM VENDA">SEM VENDA</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="fCluster">Cluster</label>
+          <select id="fCluster">
+            <option value="TODOS">TODOS</option>
+            <option value="EMPORIO G">EMPORIO G</option>
+            <option value="EMPORIO M">EMPORIO M</option>
+            <option value="EMPORIO P">EMPORIO P</option>
+            <option value="MERCEARIA M">MERCEARIA M</option>
+            <option value="MERCEARIA P">MERCEARIA P</option>
+            <option value="SEM CLUSTER">SEM CLUSTER</option>
+          </select>
+        </div>
+
+        <div class="field field--actions">
+          <button id="btnClear" type="button" class="btn btn--secondary">Limpar filtros</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="results" aria-labelledby="results-title">
+      <div class="results__head">
+        <h2 id="results-title" class="results__title">Produtos</h2>
+        <p id="resultsCount" class="results__count" aria-live="polite">—</p>
+      </div>
+
+      <div id="tableWrap" class="table-wrap" aria-busy="false">
+        <div id="loader" class="loader" hidden>
+          <span class="loader__spinner" aria-hidden="true"></span>
+          <span>Carregando…</span>
+        </div>
+
+        <table id="productsTable" class="table" aria-describedby="results-title">
+          <thead>
+            <tr>
+              <th scope="col">SEQ PROD</th>
+              <th scope="col">DESC</th>
+              <th scope="col">EMBALAGEM</th>
+              <th scope="col">CATEGORIA</th>
+              <th scope="col">GRUPO</th>
+              <th scope="col">SUBGRUPO</th>
+              <th scope="col">STATUS</th>
+              <th scope="col">CLUSTER</th>
+              <th scope="col">AÇÃO</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"><!-- linhas --></tbody>
+        </table>
+
+        <div id="emptyState" class="empty" hidden>
+          <p>Nenhum produto encontrado.</p>
+        </div>
+      </div>
+
+      <nav id="pagination" class="pagination" aria-label="Paginação"></nav>
+    </section>
+  </main>
+
+  <footer class="app-footer" role="contentinfo">
+    <span id="pollStatus" class="app-footer__status">Aguardando atualização…</span>
+  </footer>
+
+  <!-- Modal: Definir cluster (múltipla escolha) -->
+  <div id="modalCluster" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalClusterTitle">
+    <div class="modal__backdrop" data-close="modal"></div>
+    <div class="modal__panel" role="document">
+      <h3 id="modalClusterTitle" class="modal__title">Definir cluster</h3>
+      <p id="modalClusterProduct" class="modal__hint"></p>
+
+      <label class="modal__label">Tipo / Cluster (pode escolher vários)</label>
+      <div id="modalClusterChecks" class="modal__checks" role="group" aria-label="Clusters do produto"></div>
+
+      <div class="modal__actions">
+        <button id="modalCancel" type="button" class="btn btn--secondary">Cancelar</button>
+        <button id="modalSave" type="button" class="btn btn--primary">Salvar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Container de toasts -->
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- Tooltip global (segue o elemento alvo) -->
+  <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+  <!-- Módulo principal (importa config.js, api.js, etc.) -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+window.APP_CONFIG = { APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbwvhhXNhz49QhQ7fu_QDPRaWnRjnSek9T5u_fWCZGxZ07soqYYzjNHUBP5MR5rfJ2VN8g/exec" };
