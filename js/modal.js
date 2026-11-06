@@ -32,7 +32,6 @@ export function abrirModal(seq) {
   document.getElementById("modalClusterProduct").textContent =
     `${p.seqProd} — ${p.desc}${p.embalagem ? " · " + p.embalagem : ""}`;
 
-  // Pré-seleciona clusters atuais
   const atuais = getClustersAtuais(seq);
   const container = document.getElementById("modalClusterChecks");
   container.innerHTML = TIPOS.map(t => `
@@ -66,8 +65,6 @@ async function salvar() {
   const selecionados = [...container.querySelectorAll("input[type=checkbox]:checked")]
     .map(i => i.value);
   const lista = _normalizarLista(selecionados);
-
-  // Se o usuário desmarcou tudo, gravamos STATUS vazio (equivale a "Sem cluster").
   const statusStr = lista.join(",");
 
   const btn = document.getElementById("modalSave");
@@ -84,6 +81,7 @@ async function salvar() {
       subgrupo2: p.subgrupo2,
       status: statusStr,
     });
+    // Reflete imediatamente na tela
     setClustersAtuais(p.seqProd, lista);
     if (window.__clusterMap) window.__clusterMap.set(String(p.seqProd), lista.join(","));
     atualizarClustersVisiveis();
