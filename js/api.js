@@ -1,7 +1,10 @@
 // Camada de comunicação com o Web App do Apps Script.
+// Estratégia: JSONP (script tag) para leitura e GET com querystring para
+// escrita. Isso contorna 100% dos problemas de CORS/redirect 302 do GAS.
 import "./config.js";
 
-const TIMEOUT_MS = 10000;
+const TIMEOUT_MS = 15000;
+let _jsonpSeq = 0;
 
 function getUrlBase() {
   const url = window.APP_CONFIG && window.APP_CONFIG.APPS_SCRIPT_URL;
@@ -11,92 +14,83 @@ function getUrlBase() {
   return url;
 }
 
-function fetchComTimeout(url, opts = {}) {
+// ---------- JSONP ----------
+function jsonp(params) {
+  return new Promise((resolve, reject) => {
+    const cbName = "__jsonp_cb_" + (++_jsonpSeq) + "_" + Date.now();
+    const qs = new URLSearchParams({ ...params, callback: cbName }).toString();
+    const script = document.createElement("script");
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Timeout na comunicação com o Apps Script."));
+    }, TIMEOUT_MS);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try { delete window[cbName]; } catch (_) { window[cbName] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cbName] = (data) => { cleanup(); resolve(data); };
+    script.onerror = () => { cleanup(); reject(new Error("Falha de rede (JSONP).")); };
+    script.src = `${getUrlBase()}?${qs}`;
+    document.head.appendChild(script);
+  });
+}
+
+// ---------- GET simples para escrita (redirect 302 preserva querystring) ----------
+async function getSimples(params) {
+  const qs = new URLSearchParams(params).toString();
+  const url = `${getUrlBase()}?${qs}`;
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
-}
-
-async function lerJson(res) {
-  const texto = await res.text();
   try {
-    return JSON.parse(texto);
-  } catch (_) {
-    if (texto.trim().startsWith("<")) {
-      throw new Error(
-        "Resposta HTML recebida. O Web App provavelmente está restrito. " +
-        "Reimplante como 'Executar como Eu' + 'Qualquer pessoa'."
-      );
-    }
-    throw new Error("Resposta inválida: " + texto.slice(0, 120));
+    // no-cors: só dispara; a confirmação vem por jsonp(consultar) depois.
+    await fetch(url, { method: "GET", mode: "no-cors", cache: "no-store", signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
   }
 }
 
-// GET tolerante: tenta leitura normal; se falhar por CORS, refaz em no-cors.
-// Em no-cors a resposta não é legível, então retornamos { ok: true, dados: null, opaco: true }.
-// Quem usa a informação (polling) decide o que fazer com opaco.
-async function getJson(url) {
-  try {
-    const res = await fetchComTimeout(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await lerJson(res);
-    if (!json.ok) throw new Error(json.erro || "Falha na resposta");
-    return { ok: true, dados: json.dados };
-  } catch (err) {
-    // fallback: dispara sem ler a resposta para evitar erro no console
-    try {
-      await fetch(url, { method: "GET", mode: "no-cors", cache: "no-store" });
-    } catch (_) { /* ignora */ }
-    return { ok: false, opaco: true, erro: err.message };
-  }
-}
-
+// ---------- API pública ----------
 async function listar() {
-  const r = await getJson(`${getUrlBase()}?acao=listar`);
-  if (!r.ok) throw new Error(r.erro || "Falha ao listar");
-  return r.dados || [];
+  const json = await jsonp({ acao: "listar" });
+  if (!json || !json.ok) throw new Error(json && json.erro || "Falha ao listar");
+  return json.dados || [];
 }
 
 async function consultar(seq) {
-  const r = await getJson(`${getUrlBase()}?acao=consultar&seq=${encodeURIComponent(seq)}`);
-  if (!r.ok) throw new Error(r.erro || "Falha ao consultar");
-  return r.dados || null;
+  const json = await jsonp({ acao: "consultar", seq: String(seq) });
+  if (!json || !json.ok) throw new Error(json && json.erro || "Falha ao consultar");
+  return json.dados || null;
 }
 
-// POST via no-cors: garante o efeito no servidor sem erro no console.
-// A confirmação é feita por um GET ?acao=consultar depois.
 async function salvar(payload) {
-  const url = getUrlBase();
-  const body = JSON.stringify({ acao: "salvar", ...payload });
+  // 1) Dispara a gravação via GET (querystring sobrevive ao 302 do GAS).
+  await getSimples({
+    acao: "salvar",
+    seqProd: payload.seqProd,
+    desc: payload.desc || "",
+    embalagem: payload.embalagem || "",
+    categoria: payload.categoria || "",
+    grupo: payload.grupo || "",
+    subgrupo: payload.subgrupo || "",
+    subgrupo1: payload.subgrupo1 || "",
+    subgrupo2: payload.subgrupo2 || "",
+    status: payload.status || "",
+  });
 
-  // 1) Dispara o POST sem tentar ler a resposta.
-  //    Em GAS o redirect 302 quebra o CORS, então no-cors é a única via silenciosa.
-  try {
-    await fetch(url, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body,
-    });
-  } catch (_) {
-    // Se falhar até em no-cors, é problema real de rede — propaga.
-    throw new Error("Falha de rede ao enviar a gravação.");
-  }
-
-  // 2) Confirma a gravação via GET. Pequeno atraso para o servidor processar.
-  await new Promise(r => setTimeout(r, 600));
-
+  // 2) Confirma via JSONP (leitura confiável).
+  await new Promise(r => setTimeout(r, 700));
   try {
     const atual = await consultar(payload.seqProd);
     if (atual && String(atual["SEQ PROD"]).trim() === String(payload.seqProd).trim()) {
-      return { ok: true, confirmado: true };
+      const statusSalvo = String(atual["STATUS"] || "").trim();
+      const statusEsperado = String(payload.status || "").trim();
+      return { ok: true, confirmado: statusSalvo === statusEsperado, dados: atual };
     }
-    // Sem confirmação explícita, mas POST foi disparado: consideramos OK
-    // (o polling acaba refletindo o estado real em até 15s).
-    return { ok: true, confirmado: false };
-  } catch (_) {
-    return { ok: true, confirmado: false };
-  }
+  } catch (_) { /* cai no retorno abaixo */ }
+  return { ok: true, confirmado: false };
 }
 
-export const api = { listar, consultar, salvar, ping: () => getJson(`${getUrlBase()}?acao=ping`) };
+export const api = { listar, consultar, salvar, ping: () => jsonp({ acao: "ping" }) };
