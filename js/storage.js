@@ -1,6 +1,7 @@
-// Cache local de clusters. É a FONTE DE VERDADE do site enquanto o usuário
-// não fizer o fluxo manual de copiar DEPOSITO → CLUSTER.
-// Chave: seqProd → string "A,B,C" (mesmo formato que vai para a planilha).
+// Cache local de clusters. É apenas OTIMIZAÇÃO — a fonte de verdade é a aba
+// CLUSTER do BASE.xlsx (lida por data.js). Serve para refletir imediatamente
+// na UI o que o usuário acabou de salvar nesta sessão/navegador.
+// Chave: seqProd → string "A,B,C" (mesmo formato da planilha).
 
 const KEY = "consultaClusters.clusters.v1";
 

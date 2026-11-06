@@ -1,7 +1,6 @@
 // Camada de comunicação com o Apps Script.
 // Só faz ESCRITA (POST para a aba DEPOSITO).
-// A LEITURA é feita de localStorage — ver storage.js.
-// Motivo: o redirect 302 do Google bloqueia CORS no GET; não dependemos mais dele.
+// A LEITURA dos clusters já definidos vem do BASE.xlsx (aba CLUSTER) via data.js.
 import "./config.js";
 
 const TIMEOUT_MS = 15000;
@@ -14,8 +13,6 @@ function getUrlBase() {
   return url;
 }
 
-// POST com no-cors: dispara sem tentar ler a resposta (elimina erro de CORS no console).
-// Garante gravação na planilha; a confirmação é o usuário olhar a aba DEPOSITO.
 async function salvar(payload) {
   const body = JSON.stringify({ acao: "salvar", ...payload });
   const ctrl = new AbortController();

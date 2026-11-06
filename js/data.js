@@ -1,12 +1,15 @@
-// Carrega BASE.xlsx, cruza com TABLE e VENDA e indexa por SEQ PROD.
-// BASE.xlsx deve conter (na 1ª aba ou em abas nomeadas) as colunas descritas.
-// Estratégia: tentar abas "BASE", "TABLE", "VENDA"; fallback: 1ª aba = BASE.
+// Carrega BASE.xlsx (abas BASE, TABLE, VENDA, CLUSTER) e cruza tudo.
+// A aba CLUSTER do BASE.xlsx é a FONTE DE VERDADE dos clusters já definidos.
+// Formato esperado da aba CLUSTER (1ª linha = cabeçalho):
+//   SEQ PROD | CLUSTER   (aceita também "STATUS" no lugar de "CLUSTER")
+// Múltiplos clusters: separar por vírgula → "EMPORIO G,MERCEARIA P"
 
 const CAMINHO = "dados/BASE.xlsx";
 
 let estado = {
-  produtos: [],          // [{seqProd, desc, descRed, embalagem, divisao, categoria, grupo, subgrupo, subgrupo1, subgrupo2, status, vendas: [...], tipoPorLoja: {...}}]
+  produtos: [],
   porSeq: new Map(),
+  clusterMap: new Map(),
 };
 
 function parseSheet(ws, XLSX) {
@@ -21,6 +24,17 @@ function normalizarCabecalho(obj) {
   return out;
 }
 
+function normalizarCluster(v) {
+  if (v == null) return "";
+  const arr = String(v).split(",").map(x => x.trim()).filter(Boolean);
+  const vistos = new Set();
+  const out = [];
+  for (const x of arr) {
+    if (!vistos.has(x)) { vistos.add(x); out.push(x); }
+  }
+  return out.join(",");
+}
+
 export async function carregarDados() {
   const res = await fetch(CAMINHO, { cache: "no-cache" });
   if (!res.ok) throw new Error(`Não foi possível carregar ${CAMINHO} (HTTP ${res.status})`);
@@ -30,10 +44,21 @@ export async function carregarDados() {
   const nomeBase = wb.SheetNames.includes("BASE") ? "BASE" : wb.SheetNames[0];
   const nomeTable = wb.SheetNames.find(n => /^TABLE$/i.test(n.trim()));
   const nomeVenda = wb.SheetNames.find(n => /^VENDA$/i.test(n.trim()));
+  const nomeCluster = wb.SheetNames.find(n => /^CLUSTER$/i.test(n.trim()));
 
   const baseRows = parseSheet(wb.Sheets[nomeBase], XLSX).map(normalizarCabecalho);
   const tableRows = nomeTable ? parseSheet(wb.Sheets[nomeTable], XLSX).map(normalizarCabecalho) : [];
   const vendaRows = nomeVenda ? parseSheet(wb.Sheets[nomeVenda], XLSX).map(normalizarCabecalho) : [];
+  const clusterRows = nomeCluster ? parseSheet(wb.Sheets[nomeCluster], XLSX).map(normalizarCabecalho) : [];
+
+  // Mapa de clusters vindo da aba CLUSTER
+  const clusterMap = new Map();
+  for (const r of clusterRows) {
+    const seq = String(r["SEQ PROD"] ?? r["SEQ_PROD"] ?? r["SEQPROD"] ?? "").trim();
+    if (!seq) continue;
+    const clu = normalizarCluster(r["CLUSTER"] ?? r["STATUS"] ?? "");
+    if (clu) clusterMap.set(seq, clu);
+  }
 
   // Mapa loja → tipo (da TABLE)
   const tipoPorLoja = new Map();
@@ -79,18 +104,20 @@ export async function carregarDados() {
       subgrupo2: String(r["SUBGRUPO 2"] ?? "").trim(),
       status: String(r["STATUS"] ?? "").trim().toUpperCase(),
       vendas,
-      tipoPorLoja, // referência compartilhada (imutável)
+      tipoPorLoja,
+      cluster: clusterMap.get(seqProd) || "",
     };
     produtos.push(produto);
     porSeq.set(seqProd, produto);
   }
 
-  estado = { produtos, porSeq };
+  estado = { produtos, porSeq, clusterMap };
   return estado;
 }
 
 export function getEstado() { return estado; }
 export function getProduto(seq) { return estado.porSeq.get(String(seq)); }
+export function getMapaClustersPlanilha() { return estado.clusterMap || new Map(); }
 
 // Listas para popular dropdowns (deduplicadas e ordenadas)
 export function listasParaFiltro() {

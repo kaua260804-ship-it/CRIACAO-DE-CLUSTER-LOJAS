@@ -154,8 +154,7 @@ function mostrarTooltipStatus(el) {
   if (linha.status === "SEM VENDA" || !linha.vendas.length) {
     tt.innerHTML = `<div class="tooltip__title">Sem vendas registradas</div>`;
   } else {
-    // 1) Monta lojas únicas com seu TIPO (usa tipoPorLoja).
-    const porLoja = new Map(); // loja -> tipo
+    const porLoja = new Map();
     for (const v of linha.vendas) {
       const loja = v.loja;
       if (!loja) continue;
@@ -164,9 +163,7 @@ function mostrarTooltipStatus(el) {
       }
     }
 
-    // 2) Agrupa por TIPO e ordena: EMPORIO (G,M,P) e depois MERCEARIA (M,P),
-    //    e dentro de cada TIPO, lojas em A-Z.
-    const grupos = new Map(); // tipo -> [lojas]
+    const grupos = new Map();
     for (const [loja, tipo] of porLoja) {
       const t = tipo || "SEM TIPO";
       if (!grupos.has(t)) grupos.set(t, []);

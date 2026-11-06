@@ -1,8 +1,11 @@
 // Modal "Definir cluster" com múltipla escolha (checkboxes).
+// SAÍDA: POST → Apps Script → aba DEPOSITO.
+// Após salvar, atualiza o cache local para refletir imediatamente na UI.
 import { api } from "./api.js";
 import { getProduto } from "./data.js";
 import { getClustersAtuais, setClustersAtuais, _normalizarLista } from "./filters.js";
 import { atualizarClustersVisiveis } from "./table.js";
+import { salvarNoStorage } from "./storage.js";
 
 const TIPOS = ["EMPORIO G", "EMPORIO M", "EMPORIO P", "MERCEARIA M", "MERCEARIA P"];
 
@@ -70,7 +73,7 @@ async function salvar() {
   const btn = document.getElementById("modalSave");
   btn.disabled = true;
   try {
-    const res = await api.salvar({
+    await api.salvar({
       seqProd: p.seqProd,
       desc: p.desc,
       embalagem: p.embalagem,
@@ -82,15 +85,14 @@ async function salvar() {
       status: statusStr,
     });
 
-    if (!res.confirmado) {
-      toast("Enviado, mas não foi possível confirmar. Verifique em alguns segundos.", "warn");
-    } else {
-      toast("Cluster salvo com sucesso.", "success");
-    }
+    toast("Cluster enviado para a planilha (aba DEPOSITO).", "success");
 
-    // Atualiza estado local de qualquer forma (o polling vai reconciliar)
     setClustersAtuais(p.seqProd, lista);
-    if (window.__clusterMap) window.__clusterMap.set(String(p.seqProd), lista.join(","));
+    salvarNoStorage(p.seqProd, statusStr);
+    if (window.__clusterMap) {
+      if (statusStr) window.__clusterMap.set(String(p.seqProd), statusStr);
+      else window.__clusterMap.delete(String(p.seqProd));
+    }
     atualizarClustersVisiveis();
     fecharModal();
     _onSaved();

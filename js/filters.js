@@ -1,4 +1,4 @@
-// Estado dos filtros + mapa de clusters (suporta N clusters por produto, separados por vírgula).
+// Estado dos filtros + mapa de clusters (N clusters por produto, separados por vírgula).
 import { listasParaFiltro } from "./data.js";
 
 const STORAGE_KEY = "consultaClusters.filtros.v1";
