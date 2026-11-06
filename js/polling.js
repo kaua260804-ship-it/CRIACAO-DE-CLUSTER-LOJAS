@@ -36,6 +36,7 @@ async function tick() {
   if (document.hidden) return;
   try {
     const dados = await api.listar();
+    if (!Array.isArray(dados)) throw new Error("Resposta inválida do servidor.");
     _mapaCluster = new Map();
     for (const r of dados) {
       const seq = String(r["SEQ PROD"] || r.seqProd || "").trim();
@@ -49,10 +50,9 @@ async function tick() {
     _onUpdate(_mapaCluster);
   } catch (err) {
     _tentativasErro++;
-    // Loga apenas a primeira falha de uma sequência (evita poluir o console).
     if (!_logAviso) {
       _logAviso = true;
-      console.info("Polling: aguardando reconexão com o Apps Script.");
+      console.warn("Polling: falha ao listar —", err.message);
     }
     atualizarRodape("erro");
     // retry com backoff progressivo, mantendo o loop principal de 15s
