@@ -8,7 +8,8 @@ let _jsonpSeq = 0;
 
 function getUrlBase() {
   const url = window.APP_CONFIG && window.APP_CONFIG.APPS_SCRIPT_URL;
-  if (!url || url === "https://script.google.com/macros/s/AKfycbyTVkrCKYFJS_8qUKQw7z1V88pvekPWWCb2XVzMBciOPLb6DnikeMmN_W-VwNQNe3jgLQ/exec") {
+  // Só valida se está vazio/ausente. NÃO compare com a URL real.
+  if (!url || typeof url !== "string" || url.trim() === "") {
     throw new Error("APPS_SCRIPT_URL não configurada em js/config.js");
   }
   return url;
