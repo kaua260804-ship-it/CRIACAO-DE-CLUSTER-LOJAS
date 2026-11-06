@@ -1,81 +1,44 @@
-// Loop de 15s consultando o Apps Script (acao=listar); pausa em aba oculta.
-import { api } from "./api.js";
+// Não faz mais polling de rede. A "fonte de verdade" é o localStorage.
+// O nome foi mantido para não quebrar imports de main.js, mas a API mudou.
+import { carregarStorage, getMapaLocal } from "./storage.js";
 
-const INTERVALO_MS = 15000;
-
-let _timer = null;
-let _ultimaAtualizacao = 0;
 let _onUpdate = () => {};
-let _mapaCluster = new Map(); // seq -> "EMPORIO G,MERCEARIA M"
+let _ultimaAtualizacao = 0;
 
 export function inicializarPolling({ onUpdate }) {
   _onUpdate = onUpdate;
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden) pararTimer();
-    else { tick(); iniciarTimer(); }
+  carregarStorage();
+  _ultimaAtualizacao = Date.now();
+  _onUpdate(getMapaLocal());
+  atualizarRodape("ok");
+
+  // Atualiza o rodapé a cada 5s sem travar nada.
+  setInterval(() => {
+    if (!document.hidden) atualizarRodape("ok");
+  }, 5000);
+
+  // Sincroniza entre abas do mesmo navegador.
+  window.addEventListener("storage", (e) => {
+    if (e.key === "consultaClusters.clusters.v1") {
+      carregarStorage();
+      _ultimaAtualizacao = Date.now();
+      _onUpdate(getMapaLocal());
+    }
   });
-  iniciarTimer();
 }
 
-export function getMapaCluster() { return _mapaCluster; }
+export function getMapaCluster() { return getMapaLocal(); }
 
-function iniciarTimer() {
-  pararTimer();
-  _timer = setInterval(tick, INTERVALO_MS);
-  tick();
-}
-
-function pararTimer() {
-  if (_timer) { clearInterval(_timer); _timer = null; }
-}
-
-let _tentativasErro = 0;
-let _logAviso = false;
-
-async function tick() {
-  if (document.hidden) return;
-  try {
-    const dados = await api.listar();
-    if (!Array.isArray(dados)) throw new Error("Resposta inválida do servidor.");
-    _mapaCluster = new Map();
-    for (const r of dados) {
-      const seq = String(r["SEQ PROD"] || r.seqProd || "").trim();
-      const status = String(r["STATUS"] || r.status || "").trim();
-      if (seq) _mapaCluster.set(seq, status);
-    }
-    _ultimaAtualizacao = Date.now();
-    _tentativasErro = 0;
-    _logAviso = false;
-    atualizarRodape("ok");
-    _onUpdate(_mapaCluster);
-  } catch (err) {
-    _tentativasErro++;
-    if (!_logAviso) {
-      _logAviso = true;
-      console.warn("Polling: falha ao listar —", err.message);
-    }
-    atualizarRodape("erro");
-    // retry com backoff progressivo, mantendo o loop principal de 15s
-    if (_tentativasErro <= 3) {
-      setTimeout(() => { if (!document.hidden) tick(); }, 3000 * _tentativasErro);
-    }
-  }
+export function atualizarMapaLocal(mapa) {
+  _ultimaAtualizacao = Date.now();
+  _onUpdate(mapa);
+  atualizarRodape("ok");
 }
 
 function atualizarRodape(estado) {
   const el = document.getElementById("pollStatus");
   if (!el) return;
-  if (estado === "erro") {
-    el.textContent = "Reconectando ao Apps Script…";
-    return;
-  }
-  if (!_ultimaAtualizacao) {
-    el.textContent = "Aguardando atualização…";
-    return;
-  }
+  if (!_ultimaAtualizacao) { el.textContent = "Aguardando…"; return; }
   const seg = Math.floor((Date.now() - _ultimaAtualizacao) / 1000);
-  el.textContent = `Atualizado há ${seg}s`;
-  setTimeout(() => {
-    if (!document.hidden && estado === "ok") atualizarRodape("ok");
-  }, 1000);
+  el.textContent = `Atualizado há ${seg}s (local)`;
 }
