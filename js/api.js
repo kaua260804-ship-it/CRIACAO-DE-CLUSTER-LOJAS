@@ -1,97 +1,84 @@
 // Camada de comunicação com o Web App do Apps Script.
-// Estratégia: JSONP (script tag) para leitura e GET com querystring para
-// escrita. Isso contorna 100% dos problemas de CORS/redirect 302 do GAS.
+// Estratégia: fetch normal (CORS), sem JSONP, sem no-cors para leitura.
+// O POST funciona cross-origin porque Content-Type: text/plain não dispara preflight.
+// O GET funciona se o deploy estiver "Executar como Eu" + "Qualquer pessoa".
 import "./config.js";
 
 const TIMEOUT_MS = 15000;
-let _jsonpSeq = 0;
 
 function getUrlBase() {
   const url = window.APP_CONFIG && window.APP_CONFIG.APPS_SCRIPT_URL;
-  // Só valida se está vazio/ausente. NÃO compare com a URL real.
   if (!url || typeof url !== "string" || url.trim() === "") {
     throw new Error("APPS_SCRIPT_URL não configurada em js/config.js");
   }
   return url;
 }
 
-// ---------- JSONP ----------
-function jsonp(params) {
-  return new Promise((resolve, reject) => {
-    const cbName = "__jsonp_cb_" + (++_jsonpSeq) + "_" + Date.now();
-    const qs = new URLSearchParams({ ...params, callback: cbName }).toString();
-    const script = document.createElement("script");
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("Timeout na comunicação com o Apps Script."));
-    }, TIMEOUT_MS);
-
-    function cleanup() {
-      clearTimeout(timer);
-      try { delete window[cbName]; } catch (_) { window[cbName] = undefined; }
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    window[cbName] = (data) => { cleanup(); resolve(data); };
-    script.onerror = () => { cleanup(); reject(new Error("Falha de rede (JSONP).")); };
-    script.src = `${getUrlBase()}?${qs}`;
-    document.head.appendChild(script);
-  });
-}
-
-// ---------- GET simples para escrita (redirect 302 preserva querystring) ----------
-async function getSimples(params) {
-  const qs = new URLSearchParams(params).toString();
-  const url = `${getUrlBase()}?${qs}`;
+function fetchComTimeout(url, opts = {}) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
+}
+
+async function lerJson(res) {
+  const texto = await res.text();
   try {
-    // no-cors: só dispara; a confirmação vem por jsonp(consultar) depois.
-    await fetch(url, { method: "GET", mode: "no-cors", cache: "no-store", signal: ctrl.signal });
-  } finally {
-    clearTimeout(t);
+    return JSON.parse(texto);
+  } catch (_) {
+    if (texto.trim().startsWith("<")) {
+      throw new Error(
+        "Resposta HTML recebida. O Web App provavelmente está restrito. " +
+        "Reimplante como 'Executar como Eu' + 'Qualquer pessoa'."
+      );
+    }
+    throw new Error("Resposta inválida: " + texto.slice(0, 120));
   }
 }
 
-// ---------- API pública ----------
 async function listar() {
-  const json = await jsonp({ acao: "listar" });
-  if (!json || !json.ok) throw new Error(json && json.erro || "Falha ao listar");
+  let res;
+  try {
+    res = await fetchComTimeout(`${getUrlBase()}?acao=listar`, { cache: "no-store" });
+  } catch (e) {
+    throw new Error("CORS/rede ao listar. Confirme o deploy como 'Qualquer pessoa'.");
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await lerJson(res);
+  if (!json.ok) throw new Error(json.erro || "Falha ao listar");
   return json.dados || [];
 }
 
 async function consultar(seq) {
-  const json = await jsonp({ acao: "consultar", seq: String(seq) });
-  if (!json || !json.ok) throw new Error(json && json.erro || "Falha ao consultar");
+  let res;
+  try {
+    res = await fetchComTimeout(
+      `${getUrlBase()}?acao=consultar&seq=${encodeURIComponent(seq)}`,
+      { cache: "no-store" }
+    );
+  } catch (e) {
+    throw new Error("CORS/rede ao consultar. Confirme o deploy como 'Qualquer pessoa'.");
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await lerJson(res);
+  if (!json.ok) throw new Error(json.erro || "Falha ao consultar");
   return json.dados || null;
 }
 
 async function salvar(payload) {
-  // 1) Dispara a gravação via GET (querystring sobrevive ao 302 do GAS).
-  await getSimples({
-    acao: "salvar",
-    seqProd: payload.seqProd,
-    desc: payload.desc || "",
-    embalagem: payload.embalagem || "",
-    categoria: payload.categoria || "",
-    grupo: payload.grupo || "",
-    subgrupo: payload.subgrupo || "",
-    subgrupo1: payload.subgrupo1 || "",
-    subgrupo2: payload.subgrupo2 || "",
-    status: payload.status || "",
-  });
-
-  // 2) Confirma via JSONP (leitura confiável).
-  await new Promise(r => setTimeout(r, 700));
+  let res;
   try {
-    const atual = await consultar(payload.seqProd);
-    if (atual && String(atual["SEQ PROD"]).trim() === String(payload.seqProd).trim()) {
-      const statusSalvo = String(atual["STATUS"] || "").trim();
-      const statusEsperado = String(payload.status || "").trim();
-      return { ok: true, confirmado: statusSalvo === statusEsperado, dados: atual };
-    }
-  } catch (_) { /* cai no retorno abaixo */ }
-  return { ok: true, confirmado: false };
+    res = await fetchComTimeout(getUrlBase(), {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ acao: "salvar", ...payload }),
+    });
+  } catch (e) {
+    throw new Error("CORS/rede ao salvar. Confirme o deploy como 'Qualquer pessoa'.");
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await lerJson(res);
+  if (!json.ok) throw new Error(json.erro || "Falha ao salvar");
+  return json;
 }
 
-export const api = { listar, consultar, salvar, ping: () => jsonp({ acao: "ping" }) };
+export const api = { listar, consultar, salvar };
