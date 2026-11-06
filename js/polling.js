@@ -6,7 +6,7 @@ const INTERVALO_MS = 15000;
 let _timer = null;
 let _ultimaAtualizacao = 0;
 let _onUpdate = () => {};
-let _mapaCluster = new Map(); // seq -> "EMPORIO G,MERCEARIA M" (string bruta)
+let _mapaCluster = new Map(); // seq -> "EMPORIO G,MERCEARIA M"
 
 export function inicializarPolling({ onUpdate }) {
   _onUpdate = onUpdate;
@@ -30,6 +30,7 @@ function pararTimer() {
 }
 
 let _tentativasErro = 0;
+let _logAviso = false;
 
 async function tick() {
   if (document.hidden) return;
@@ -39,30 +40,42 @@ async function tick() {
     for (const r of dados) {
       const seq = String(r["SEQ PROD"] || r.seqProd || "").trim();
       const status = String(r["STATUS"] || r.status || "").trim();
-      if (seq) _mapaCluster.set(seq, status); // status pode ser "A,B" ou ""
+      if (seq) _mapaCluster.set(seq, status);
     }
     _ultimaAtualizacao = Date.now();
     _tentativasErro = 0;
-    atualizarRodape();
+    _logAviso = false;
+    atualizarRodape("ok");
     _onUpdate(_mapaCluster);
   } catch (err) {
     _tentativasErro++;
-    console.warn("Polling falhou:", err.message);
+    // Loga apenas a primeira falha de uma sequência (evita poluir o console).
+    if (!_logAviso) {
+      _logAviso = true;
+      console.info("Polling: aguardando reconexão com o Apps Script.");
+    }
+    atualizarRodape("erro");
+    // retry com backoff progressivo, mantendo o loop principal de 15s
     if (_tentativasErro <= 3) {
       setTimeout(() => { if (!document.hidden) tick(); }, 3000 * _tentativasErro);
     }
-    atualizarRodape(true);
   }
 }
 
-function atualizarRodape(comErro = false) {
+function atualizarRodape(estado) {
   const el = document.getElementById("pollStatus");
   if (!el) return;
-  if (comErro) { el.textContent = "Falha na atualização automática — tentando novamente…"; return; }
-  if (!_ultimaAtualizacao) { el.textContent = "Aguardando atualização…"; return; }
+  if (estado === "erro") {
+    el.textContent = "Reconectando ao Apps Script…";
+    return;
+  }
+  if (!_ultimaAtualizacao) {
+    el.textContent = "Aguardando atualização…";
+    return;
+  }
   const seg = Math.floor((Date.now() - _ultimaAtualizacao) / 1000);
   el.textContent = `Atualizado há ${seg}s`;
   setTimeout(() => {
-    if (!document.hidden && !comErro) atualizarRodape();
+    if (!document.hidden && estado === "ok") atualizarRodape("ok");
   }, 1000);
 }
