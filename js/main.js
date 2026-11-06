@@ -1,6 +1,5 @@
 // Bootstrap: inicializa módulos e liga eventos.
 import "./config.js";
-import { api } from "./api.js";
 import { carregarDados, getEstado } from "./data.js";
 import { inicializarFiltros, aplicarOverridesMap } from "./filters.js";
 import { inicializarTabela, renderTabela, atualizarClustersVisiveis } from "./table.js";
@@ -40,9 +39,8 @@ async function bootstrap() {
 
   inicializarPolling({
     onUpdate: (mapa) => {
-      // mapa: seq -> "A,B" (string bruta vinda do DEPOSITO)
       window.__clusterMap = mapa;
-      aplicarOverridesMap(mapa); // normaliza para lista
+      aplicarOverridesMap(mapa);
       atualizarClustersVisiveis();
     },
   });
