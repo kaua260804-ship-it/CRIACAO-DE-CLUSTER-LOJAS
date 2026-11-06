@@ -70,7 +70,7 @@ async function salvar() {
   const btn = document.getElementById("modalSave");
   btn.disabled = true;
   try {
-    await api.salvar({
+    const res = await api.salvar({
       seqProd: p.seqProd,
       desc: p.desc,
       embalagem: p.embalagem,
@@ -81,11 +81,17 @@ async function salvar() {
       subgrupo2: p.subgrupo2,
       status: statusStr,
     });
-    // Reflete imediatamente na tela
+
+    if (!res.confirmado) {
+      toast("Enviado, mas não foi possível confirmar. Verifique em alguns segundos.", "warn");
+    } else {
+      toast("Cluster salvo com sucesso.", "success");
+    }
+
+    // Atualiza estado local de qualquer forma (o polling vai reconciliar)
     setClustersAtuais(p.seqProd, lista);
     if (window.__clusterMap) window.__clusterMap.set(String(p.seqProd), lista.join(","));
     atualizarClustersVisiveis();
-    toast("Cluster salvo com sucesso.", "success");
     fecharModal();
     _onSaved();
   } catch (err) {
