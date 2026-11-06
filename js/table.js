@@ -1,19 +1,49 @@
-// Renderização paginada + tooltip de lojas (únicas, agrupadas por TIPO) + coluna cluster (N chips).
-import { filtrar, getClustersAtuais, _normalizarLista } from "./filters.js";
+// Renderização paginada + tooltip de lojas (únicas, agrupadas por TIPO)
+// + coluna cluster (N chips) + ordenação crescente/decrescente por coluna.
+import { filtrar, getClustersAtuais } from "./filters.js";
 
 const POR_PAGINA = 50;
 const ORDEM_TIPO = ["EMPORIO G", "EMPORIO M", "EMPORIO P", "MERCEARIA M", "MERCEARIA P"];
+const ORDEM_STATUS = { "COM VENDA": 0, "SEM VENDA": 1 };
+const ORDEM_KEY = "consultaClusters.ordem.v1";
 
-let _produtos = [];
+// Colunas ordenáveis: chave = data-sort do <th>, valor = como extrair o valor de um produto
+const CAMPOS_ORDENAVEIS = {
+  seqProd:    p => p.seqProd,
+  desc:       p => p.desc,
+  embalagem:  p => p.embalagem,
+  categoria:  p => p.categoria,
+  grupo:      p => p.grupo,
+  subgrupo:   p => p.subgrupo,
+  status:     p => p.status,
+  cluster:    p => (getClustersAtuais(p.seqProd)[0] || ""),
+};
+
+let _produtos = [];        // já filtrados + ordenados
+let _produtosBase = [];    // filtrados SEM ordenação (referência)
 let _pagina = 1;
 let _onDefineCluster = () => {};
 
+// Ordenação atual: { campo: "seqProd"|"desc"|..., dir: "asc"|"desc" } ou null
+let _ordem = null;
+
 export function inicializarTabela({ onDefineCluster }) {
   _onDefineCluster = onDefineCluster;
+
+  carregarOrdemDoStorage();
+
   document.getElementById("tableBody").addEventListener("click", onClickTabela);
   document.getElementById("tableBody").addEventListener("mouseover", onHoverStatus);
   document.getElementById("tableBody").addEventListener("focusin", onHoverStatus);
   document.getElementById("tableBody").addEventListener("touchstart", onTouchStatus, { passive: true });
+
+  // Delegação de clique nos cabeçalhos ordenáveis
+  const thead = document.querySelector("#productsTable thead");
+  if (thead) {
+    thead.addEventListener("click", onClickCabecalho);
+    thead.addEventListener("keydown", onKeyCabecalho);
+  }
+
   document.addEventListener("click", e => {
     const tt = document.getElementById("tooltip");
     if (!tt.hidden && !tt.contains(e.target) && !e.target.closest(".status")) esconderTooltip();
@@ -21,12 +51,15 @@ export function inicializarTabela({ onDefineCluster }) {
 }
 
 export function renderTabela(produtosBase) {
-  _produtos = filtrar(produtosBase);
+  _produtosBase = filtrar(produtosBase);
   _pagina = 1;
+  aplicarOrdenacao();
   renderPagina();
 }
 
 export function atualizarClustersVisiveis() {
+  // Reaplica ordenação pois o cluster pode ter mudado (afeta ordenação por cluster)
+  aplicarOrdenacao();
   const linhas = document.querySelectorAll("#tableBody tr[data-seq]");
   for (const tr of linhas) {
     const seq = tr.dataset.seq;
@@ -34,9 +67,134 @@ export function atualizarClustersVisiveis() {
     if (!cel) continue;
     cel.innerHTML = clusterHtml(seq);
   }
+  // Atualiza cabeçalhos (indicador de ordenação)
+  renderCabecalhoIndicadores();
 }
 
 export function totalFiltrado() { return _produtos.length; }
+
+/* ---------------- Ordenação ---------------- */
+
+function aplicarOrdenacao() {
+  if (!_ordem || !CAMPOS_ORDENAVEIS[_ordem.campo]) {
+    _produtos = _produtosBase.slice();
+    renderCabecalhoIndicadores();
+    return;
+  }
+  const getter = CAMPOS_ORDENAVEIS[_ordem.campo];
+  const dir = _ordem.dir === "desc" ? -1 : 1;
+  const campo = _ordem.campo;
+
+  _produtos = _produtosBase.slice().sort((a, b) => {
+    const va = getter(a);
+    const vb = getter(b);
+
+    // STATUS: ordem fixa COM VENDA antes de SEM VENDA
+    if (campo === "status") {
+      const ia = ORDEM_STATUS[String(va).toUpperCase()] ?? 99;
+      const ib = ORDEM_STATUS[String(vb).toUpperCase()] ?? 99;
+      return (ia - ib) * dir;
+    }
+
+    // SEQ PROD: numérico quando possível
+    if (campo === "seqProd") {
+      const na = Number(va), nb = Number(vb);
+      const aNum = Number.isFinite(na) && String(va).trim() !== "";
+      const bNum = Number.isFinite(nb) && String(vb).trim() !== "";
+      if (aNum && bNum) return (na - nb) * dir;
+      if (aNum) return -1 * dir;
+      if (bNum) return 1 * dir;
+      return String(va).localeCompare(String(vb), "pt-BR") * dir;
+    }
+
+    // CLUSTER: vazios vão para o fim (independente da direção)
+    if (campo === "cluster") {
+      const sa = String(va || "").trim();
+      const sb = String(vb || "").trim();
+      if (!sa && !sb) return 0;
+      if (!sa) return 1;
+      if (!sb) return -1;
+      return sa.localeCompare(sb, "pt-BR") * dir;
+    }
+
+    // Default: string pt-BR, numérico quando ambos forem números
+    const na = Number(va), nb = Number(vb);
+    const aNum = Number.isFinite(na) && String(va).trim() !== "";
+    const bNum = Number.isFinite(nb) && String(vb).trim() !== "";
+    if (aNum && bNum) return (na - nb) * dir;
+    return String(va).localeCompare(String(vb), "pt-BR") * dir;
+  });
+
+  renderCabecalhoIndicadores();
+}
+
+function onClickCabecalho(e) {
+  const th = e.target.closest("th[data-sort]");
+  if (!th) return;
+  const campo = th.dataset.sort;
+  if (!CAMPOS_ORDENAVEIS[campo]) return;
+
+  if (!_ordem || _ordem.campo !== campo) {
+    _ordem = { campo, dir: "asc" };
+  } else if (_ordem.dir === "asc") {
+    _ordem = { campo, dir: "desc" };
+  } else {
+    _ordem = null; // terceiro clique limpa
+  }
+
+  persistirOrdem();
+  _pagina = 1;
+  aplicarOrdenacao();
+  renderPagina();
+}
+
+function onKeyCabecalho(e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const th = e.target.closest("th[data-sort]");
+  if (!th) return;
+  e.preventDefault();
+  th.click();
+}
+
+function renderCabecalhoIndicadores() {
+  const ths = document.querySelectorAll("#productsTable thead th[data-sort]");
+  for (const th of ths) {
+    const campo = th.dataset.sort;
+    const ativo = _ordem && _ordem.campo === campo;
+    th.classList.toggle("th--sorted", !!ativo);
+    th.setAttribute("aria-sort",
+      ativo ? (_ordem.dir === "asc" ? "ascending" : "descending") : "none");
+
+    let seta = th.querySelector(".th__arrow");
+    if (!seta) {
+      seta = document.createElement("span");
+      seta.className = "th__arrow";
+      seta.setAttribute("aria-hidden", "true");
+      th.appendChild(seta);
+    }
+    seta.textContent = ativo ? (_ordem.dir === "asc" ? " ▲" : " ▼") : "";
+  }
+}
+
+function persistirOrdem() {
+  try {
+    if (_ordem) localStorage.setItem(ORDEM_KEY, JSON.stringify(_ordem));
+    else localStorage.removeItem(ORDEM_KEY);
+  } catch (_) {}
+}
+
+function carregarOrdemDoStorage() {
+  try {
+    const raw = localStorage.getItem(ORDEM_KEY);
+    if (!raw) return;
+    const o = JSON.parse(raw);
+    if (o && o.campo && CAMPOS_ORDENAVEIS[o.campo] && (o.dir === "asc" || o.dir === "desc")) {
+      _ordem = { campo: o.campo, dir: o.dir };
+    }
+  } catch (_) {}
+}
+
+/* ---------------- Renderização ---------------- */
 
 function renderPagina() {
   const tbody = document.getElementById("tableBody");
@@ -132,7 +290,8 @@ function onClickTabela(e) {
   }
 }
 
-// ---------- Tooltip de STATUS (lojas únicas, agrupadas por TIPO) ----------
+/* ---------------- Tooltip de STATUS ---------------- */
+
 function onHoverStatus(e) {
   const el = e.target.closest(".status");
   if (!el || el.dataset.interactive !== "true") return;
@@ -146,7 +305,7 @@ function onTouchStatus(e) {
 
 function mostrarTooltipStatus(el) {
   const seq = el.dataset.seq;
-  const linha = _produtos.find(p => p.seqProd === seq);
+  const linha = _produtos.find(p => p.seqProd === seq) || _produtosBase.find(p => p.seqProd === seq);
   if (!linha) return;
 
   const tt = document.getElementById("tooltip");
@@ -215,7 +374,8 @@ function esconderTooltip() {
   tt.hidden = true;
 }
 
-// ---------- utils ----------
+/* ---------------- utils ---------------- */
+
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, m => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
