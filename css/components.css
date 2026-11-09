@@ -1,4 +1,4 @@
-/* Botões, inputs, tabela, modal, toast, chips, checkboxes */
+/* Botões, inputs, tabela, modal, toast, chips, checkboxes, progresso */
 
 /* ---------- Botões ---------- */
 .btn {
@@ -17,11 +17,11 @@
 }
 .btn:disabled { opacity: .6; cursor: not-allowed; }
 .btn--primary { background: var(--color-primary); color: #fff; }
-.btn--primary:hover { background: var(--color-primary-strong); }
+.btn--primary:hover:not(:disabled) { background: var(--color-primary-strong); }
 .btn--secondary { background: var(--color-secondary); border-color: var(--color-border); }
-.btn--secondary:hover { background: #dbe1ea; }
+.btn--secondary:hover:not(:disabled) { background: #dbe1ea; }
 .btn--ghost { background: transparent; border-color: var(--color-border); }
-.btn--ghost:hover { background: var(--color-surface); }
+.btn--ghost:hover:not(:disabled) { background: var(--color-surface); }
 .btn--sm { padding: 4px 10px; font-size: .85rem; }
 .btn--danger { background: var(--color-danger); color: #fff; }
 
@@ -81,10 +81,7 @@
 .table .col-desc { max-width: 320px; }
 
 /* Cabeçalhos ordenáveis */
-.table thead th[data-sort] {
-  cursor: pointer;
-  user-select: none;
-}
+.table thead th[data-sort] { cursor: pointer; user-select: none; }
 .table thead th[data-sort]:hover { background: #e4e9f0; }
 .table thead th[data-sort]:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -126,7 +123,6 @@
   color: var(--color-text-muted);
   border-color: #e1e3e6;
 }
-/* Múltiplos chips na coluna CLUSTER */
 .cell-cluster { display: flex; flex-wrap: wrap; gap: 4px; }
 
 /* ---------- Loader ---------- */
@@ -194,11 +190,7 @@
   justify-content: center;
   padding: var(--space-4);
 }
-.modal__backdrop {
-  position: absolute;
-  inset: 0;
-  background: rgba(15,23,42,.45);
-}
+.modal__backdrop { position: absolute; inset: 0; background: rgba(15,23,42,.45); }
 .modal__panel {
   position: relative;
   background: var(--color-surface);
@@ -220,7 +212,6 @@
   margin-top: var(--space-2);
 }
 
-/* Modal: checkboxes de múltipla escolha */
 .modal__label {
   font-size: .8rem;
   font-weight: 600;
@@ -250,6 +241,34 @@
 .check:hover { background: #f8fafc; }
 .check input { accent-color: var(--color-primary); width: 16px; height: 16px; }
 .check span { font-size: .9rem; }
+
+/* ---------- Barra de progresso ---------- */
+.progress {
+  position: relative;
+  width: 100%;
+  height: 22px;
+  background: var(--color-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+.progress__bar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  background: var(--color-primary);
+  transition: width .15s ease;
+}
+.progress__text {
+  position: relative;
+  width: 100%;
+  text-align: center;
+  font-size: .78rem;
+  font-weight: 600;
+  color: var(--color-text);
+  z-index: 1;
+}
 
 /* ---------- Toasts ---------- */
 .toasts {

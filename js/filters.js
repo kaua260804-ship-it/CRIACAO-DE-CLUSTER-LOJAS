@@ -20,16 +20,13 @@ let onChange = () => {};
 export function inicializarFiltros(handler) {
   onChange = handler;
 
-  // Carrega estado salvo ANTES de popular (para restaurar corretamente)
   try {
     const salvo = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
     if (salvo && typeof salvo === "object") Object.assign(estado, salvo);
   } catch (_) { /* ignore */ }
 
-  // Popula tudo com o universo completo (sem filtros) — será refinado em seguida
   repopularTodos();
 
-  // Restaura valores salvos nos controles
   document.getElementById("fSearch").value = estado.texto;
   document.getElementById("fCategoria").value = estado.categoria;
   document.getElementById("fGrupo").value = estado.grupo;
@@ -39,48 +36,35 @@ export function inicializarFiltros(handler) {
 
   document.getElementById("fSearch").addEventListener("input", e => {
     estado.texto = e.target.value;
-    sincronizarOpcoes();
-    persistir();
-    onChange();
+    sincronizarOpcoes(); persistir(); onChange();
   });
   document.getElementById("fCategoria").addEventListener("change", e => {
     estado.categoria = e.target.value;
-    sincronizarOpcoes();
-    persistir();
-    onChange();
+    sincronizarOpcoes(); persistir(); onChange();
   });
   document.getElementById("fGrupo").addEventListener("change", e => {
     estado.grupo = e.target.value;
-    sincronizarOpcoes();
-    persistir();
-    onChange();
+    sincronizarOpcoes(); persistir(); onChange();
   });
   document.getElementById("fSubgrupo").addEventListener("change", e => {
     estado.subgrupo = e.target.value;
-    sincronizarOpcoes();
-    persistir();
-    onChange();
+    sincronizarOpcoes(); persistir(); onChange();
   });
   document.getElementById("fStatus").addEventListener("change", e => {
     estado.status = e.target.value;
-    sincronizarOpcoes();
-    persistir();
-    onChange();
+    sincronizarOpcoes(); persistir(); onChange();
   });
   document.getElementById("fCluster").addEventListener("change", e => {
     estado.cluster = e.target.value;
-    sincronizarOpcoes();
-    persistir();
-    onChange();
+    sincronizarOpcoes(); persistir(); onChange();
   });
   document.getElementById("btnClear").addEventListener("click", limpar);
 
   onChange();
 }
 
-/* ---------------- Núcleo dos filtros dinâmicos ---------------- */
+/* ---------------- Filtros dinâmicos ---------------- */
 
-// Retorna os produtos que passam por todos os filtros, EXCETO o campo `exceto`.
 function produtosFiltrados(exceto) {
   const { produtos } = getEstado();
   const q = estado.texto.trim().toLowerCase();
@@ -107,7 +91,6 @@ function produtosFiltrados(exceto) {
   });
 }
 
-// Deduplica + ordena pt-BR + remove vazios
 function unicosOrdenados(valores) {
   const set = new Set();
   for (const v of valores) {
@@ -117,31 +100,25 @@ function unicosOrdenados(valores) {
   return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
 }
 
-// Reconstrói todas as opções dos dropdowns de acordo com o estado atual.
 function sincronizarOpcoes() {
-  // Categoria
   const cats = unicosOrdenados(produtosFiltrados("categoria").map(p => p.categoria));
   repopular("fCategoria", cats, "TODAS", "TODAS");
   if (estado.categoria && !cats.includes(estado.categoria)) estado.categoria = "";
 
-  // Grupo
   const grus = unicosOrdenados(produtosFiltrados("grupo").map(p => p.grupo));
   repopular("fGrupo", grus, "TODOS", "TODOS");
   if (estado.grupo && !grus.includes(estado.grupo)) estado.grupo = "";
 
-  // Subgrupo
   const subs = unicosOrdenados(produtosFiltrados("subgrupo").map(p => p.subgrupo));
   repopular("fSubgrupo", subs, "TODOS", "TODOS");
   if (estado.subgrupo && !subs.includes(estado.subgrupo)) estado.subgrupo = "";
 
-  // Status (fixo: COM VENDA / SEM VENDA — mas só mostra se houver produtos correspondentes)
   const statusDisponiveis = unicosOrdenados(
     produtosFiltrados("status").map(p => p.status).filter(s => OPCOES_STATUS.includes(s))
   );
   repopular("fStatus", statusDisponiveis, "TODOS", "TODOS");
   if (estado.status !== "TODOS" && !statusDisponiveis.includes(estado.status)) estado.status = "TODOS";
 
-  // Cluster (fixo nos TIPOS + SEM CLUSTER)
   const prodsSemClusterExceto = produtosFiltrados("cluster");
   const clustersPresentes = new Set();
   let temSemCluster = false;
@@ -155,7 +132,6 @@ function sincronizarOpcoes() {
   repopular("fCluster", opcoesCluster, "TODOS", "TODOS");
   if (estado.cluster !== "TODOS" && !opcoesCluster.includes(estado.cluster)) estado.cluster = "TODOS";
 
-  // Reflete os valores (possivelmente limpos) nos controles
   document.getElementById("fCategoria").value = estado.categoria;
   document.getElementById("fGrupo").value = estado.grupo;
   document.getElementById("fSubgrupo").value = estado.subgrupo;
@@ -163,7 +139,6 @@ function sincronizarOpcoes() {
   document.getElementById("fCluster").value = estado.cluster;
 }
 
-// Popula um <select> mantendo o <option> inicial (com o label padrão).
 function repopular(id, valores, primeiroLabel, primeiroValor) {
   const sel = document.getElementById(id);
   if (!sel) return;
@@ -180,7 +155,6 @@ function repopular(id, valores, primeiroLabel, primeiroValor) {
   }
 }
 
-// Popula todos com o universo COMPLETO (usado no boot antes de aplicar estado salvo).
 function repopularTodos() {
   const { categorias, grupos, subgrupos } = listasParaFiltro();
   repopular("fCategoria", categorias, "TODAS", "TODAS");
@@ -205,8 +179,6 @@ export function limpar() {
   estado.cluster = "TODOS";
 
   document.getElementById("fSearch").value = "";
-
-  // Ao limpar, restaura o universo completo em todos os dropdowns
   repopularTodos();
 
   document.getElementById("fCategoria").value = "";
@@ -219,7 +191,33 @@ export function limpar() {
   onChange();
 }
 
-/* ---------------- Mapa de clusters (N por produto) ---------------- */
+/* ---------------- Helpers para "Aplicar em massa" ---------------- */
+
+// true se pelo menos um dos filtros (exceto "Buscar", que conta se não for vazio) está ativo
+export function temFiltroAtivo() {
+  return (
+    estado.texto.trim() !== "" ||
+    estado.categoria !== "" ||
+    estado.grupo !== "" ||
+    estado.subgrupo !== "" ||
+    estado.status !== "TODOS" ||
+    estado.cluster !== "TODOS"
+  );
+}
+
+// quantos produtos passam pelos filtros atuais
+export function contarFiltrados() {
+  return produtosFiltrados(null).length;
+}
+
+// Lista dos produtos filtrados (com o objeto completo)
+export function listarFiltrados() {
+  return produtosFiltrados(null);
+}
+
+export function getTiposCluster() { return TIPOS_CLUSTER.slice(); }
+
+/* ---------------- Mapa de clusters ---------------- */
 
 const _clusterMap = new Map();
 
@@ -228,8 +226,6 @@ export function aplicarOverridesMap(mapa) {
   for (const [k, v] of mapa) {
     _clusterMap.set(String(k), _normalizarLista(v));
   }
-  // Como clusters podem ter mudado, as opções do dropdown de Cluster
-  // podem precisar ser recalculadas.
   sincronizarOpcoes();
 }
 
@@ -265,7 +261,7 @@ export function setClusterAtual(seq, cluster) {
   else setClustersAtuais(seq, [cluster]);
 }
 
-/* ---------------- Aplicação dos filtros (para a tabela) ---------------- */
+/* ---------------- Filtro efetivo para a tabela ---------------- */
 
 export function filtrar(produtos) {
   const f = estado;

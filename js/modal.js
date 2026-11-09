@@ -1,6 +1,4 @@
 // Modal "Definir cluster" com múltipla escolha (checkboxes).
-// SAÍDA: POST → Apps Script → aba DEPOSITO.
-// Após salvar, atualiza o cache local para refletir imediatamente na UI.
 import { api } from "./api.js";
 import { getProduto } from "./data.js";
 import { getClustersAtuais, setClustersAtuais, _normalizarLista } from "./filters.js";
@@ -37,6 +35,8 @@ export function abrirModal(seq) {
 
   const atuais = getClustersAtuais(seq);
   const container = document.getElementById("modalClusterChecks");
+  
+  // Renderiza os checkboxes com base no que ESTE produto tem no estado atual
   container.innerHTML = TIPOS.map(t => `
     <label class="check">
       <input type="checkbox" value="${escapeAttr(t)}" ${atuais.includes(t) ? "checked" : ""} />
@@ -65,8 +65,10 @@ async function salvar() {
   if (!p) return;
 
   const container = document.getElementById("modalClusterChecks");
+  // Pega APENAS os checkboxes que estão marcados NESTE momento
   const selecionados = [...container.querySelectorAll("input[type=checkbox]:checked")]
     .map(i => i.value);
+  
   const lista = _normalizarLista(selecionados);
   const statusStr = lista.join(",");
 
@@ -82,11 +84,12 @@ async function salvar() {
       subgrupo: p.subgrupo,
       subgrupo1: p.subgrupo1,
       subgrupo2: p.subgrupo2,
-      status: statusStr,
+      status: statusStr, // Envia exatamente a string selecionada
     });
 
-    toast("Cluster enviado para a planilha (aba DEPOSITO).", "success");
+    toast("Cluster individual salvo na planilha.", "success");
 
+    // Atualiza o estado local apenas deste produto
     setClustersAtuais(p.seqProd, lista);
     salvarNoStorage(p.seqProd, statusStr);
     if (window.__clusterMap) {
