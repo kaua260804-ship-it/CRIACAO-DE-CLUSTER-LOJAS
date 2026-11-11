@@ -289,7 +289,7 @@ function onClickTabela(e) {
   }
 }
 
-// Restante das funções de tooltip e escape seguem iguais
+// ---------- TOOLTIP COM QUANTIDADE VENDIDA ----------
 function onHoverStatus(e) {
   const el = e.target.closest(".status");
   if (!el || el.dataset.interactive !== "true") return;
@@ -300,46 +300,91 @@ function onTouchStatus(e) {
   if (!el || el.dataset.interactive !== "true") return;
   mostrarTooltipStatus(el);
 }
+
 function mostrarTooltipStatus(el) {
   const seq = el.dataset.seq;
   const linha = _produtos.find(p => p.seqProd === seq) || _produtosBase.find(p => p.seqProd === seq);
   if (!linha) return;
+  
   const tt = document.getElementById("tooltip");
+  
   if (linha.status === "SEM VENDA" || !linha.vendas.length) {
     tt.innerHTML = `<div class="tooltip__title">Sem vendas registradas</div>`;
   } else {
-    const porLoja = new Map();
+    // Objeto para agrupar: Loja -> { tipo: string, qtdTotal: number }
+    const porLoja = new Map(); 
+    
     for (const v of linha.vendas) {
       const loja = v.loja;
       if (!loja) continue;
-      if (!porLoja.has(loja)) porLoja.set(loja, linha.tipoPorLoja.get(loja) || "");
+      
+      if (!porLoja.has(loja)) {
+        porLoja.set(loja, { 
+          tipo: linha.tipoPorLoja.get(loja) || "", 
+          qtdTotal: 0 
+        });
+      }
+      // SOMA A QUANTIDADE DA VENDA
+      const item = porLoja.get(loja);
+      item.qtdTotal += Number(v.qtd) || 0;
     }
-    const grupos = new Map();
-    for (const [loja, tipo] of porLoja) {
-      const t = tipo || "SEM TIPO";
+
+    // Agrupa por TIPO
+    const grupos = new Map(); 
+    for (const [loja, info] of porLoja) {
+      const t = info.tipo || "SEM TIPO";
       if (!grupos.has(t)) grupos.set(t, []);
-      grupos.get(t).push(loja);
+      grupos.get(t).push({ loja, qtdTotal: info.qtdTotal });
     }
+
+    // Ordena os TIPOS
     const tiposOrdenados = [...grupos.keys()].sort((a, b) => {
       const ia = ORDEM_TIPO.indexOf(a), ib = ORDEM_TIPO.indexOf(b);
       if (ia === -1 && ib === -1) return a.localeCompare(b, "pt-BR");
       if (ia === -1) return 1; if (ib === -1) return -1;
       return ia - ib;
     });
+
+    // Monta o HTML com a Qtd
     const blocos = tiposOrdenados.map(tipo => {
-      const lojas = grupos.get(tipo).slice().sort((a, b) => a.localeCompare(b, "pt-BR"));
-      const itens = lojas.map(l => `<li><span>${escapeHtml(l)}</span></li>`).join("");
-      return `<div class="tooltip__group"><div class="tooltip__group-title">${escapeHtml(tipo)}</div><ul class="tooltip__list">${itens}</ul></div>`;
+      const lojas = grupos.get(tipo).slice().sort((a, b) => a.loja.localeCompare(b.loja, "pt-BR"));
+      
+      // Exibe a loja e a quantidade formatada (se for número inteiro, sem decimais, senão com 2 casas)
+      const itens = lojas.map(l => {
+        const qtdFmt = Number.isInteger(l.qtdTotal) ? l.qtdTotal : l.qtdTotal.toFixed(2);
+        return `<li><span>${escapeHtml(l.loja)}</span> <span style="font-weight:600; color:#e2e8f0;">Qtd: ${qtdFmt}</span></li>`;
+      }).join("");
+      
+      return `<div class="tooltip__group">
+        <div class="tooltip__group-title">${escapeHtml(tipo)}</div>
+        <ul class="tooltip__list">${itens}</ul>
+      </div>`;
     }).join("");
-    tt.innerHTML = `<div class="tooltip__title">Lojas com venda (${porLoja.size})</div>${blocos}`;
+
+    const totalLojas = porLoja.size;
+    tt.innerHTML = `
+      <div class="tooltip__title">Lojas com venda (${totalLojas})</div>
+      ${blocos}`;
   }
+
   tt.hidden = false;
   tt.classList.add("is-open");
+  
   const rect = el.getBoundingClientRect(), ttRect = tt.getBoundingClientRect();
-  let top = rect.top - ttRect.height - 8; if (top < 8) top = rect.bottom + 8;
-  let left = rect.left; if (left + ttRect.width > window.innerWidth - 8) left = window.innerWidth - ttRect.width - 8;
-  tt.style.top = `${top}px`; tt.style.left = `${left}px`;
+  let top = rect.top - ttRect.height - 8; 
+  if (top < 8) top = rect.bottom + 8;
+  let left = rect.left; 
+  if (left + ttRect.width > window.innerWidth - 8) left = window.innerWidth - ttRect.width - 8;
+  
+  tt.style.top = `${top}px`; 
+  tt.style.left = `${left}px`;
 }
-function esconderTooltip() { document.getElementById("tooltip").classList.remove("is-open"); document.getElementById("tooltip").hidden = true; }
+
+function esconderTooltip() { 
+  const tt = document.getElementById("tooltip");
+  tt.classList.remove("is-open"); 
+  tt.hidden = true; 
+}
+
 function escapeHtml(s) { return String(s ?? "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])); }
 function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
