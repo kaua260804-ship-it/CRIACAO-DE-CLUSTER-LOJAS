@@ -6,15 +6,16 @@ import { inicializarModal, abrirModal, toast } from "./modal.js";
 import { inicializarBulk, abrirBulk, aplicarMassaFL } from "./bulk.js";
 import { exportarXLSX } from "./export.js";
 import { inicializarPolling, getMapaCluster } from "./polling.js";
-import { _enviarViaGet } from "./api.js"; // Importação para pegar a lista FL
 
 let modoFL = false;
-let _listaFL = new Set(); // Guarda os SEQ PRODs que estão na aba FL
+let _listaFL = new Set();
 
 function atualizarBotoesEStatus() {
   const btnBulk = document.getElementById("btnApplyAllClusters");
   const btnFL = document.getElementById("btnToggleFL");
   const thAction = document.getElementById("thAction");
+  const wrapMaster = document.getElementById("wrapMasterCheck");
+  const checkMaster = document.getElementById("checkMasterFL");
 
   if (modoFL) {
     btnFL.textContent = "Sair do Modo FL";
@@ -22,12 +23,15 @@ function atualizarBotoesEStatus() {
     btnBulk.textContent = "Fora de Linha (Aplicar)";
     btnBulk.disabled = !(temFiltroAtivo() && contarFiltrados() > 0);
     if (thAction) thAction.style.display = "none";
+    if (wrapMaster) wrapMaster.style.display = "block"; // Mostra checkbox mestre
   } else {
     btnFL.textContent = "Fora de Linha";
     btnFL.classList.replace("btn--danger", "btn--secondary");
     btnBulk.textContent = "Aplicar clusters em massa";
     btnBulk.disabled = !(temFiltroAtivo() && contarFiltrados() > 0);
     if (thAction) thAction.style.display = "";
+    if (wrapMaster) wrapMaster.style.display = "none"; // Esconde checkbox mestre
+    if (checkMaster) checkMaster.checked = false;      // Desmarca ao sair
   }
 
   atualizarDashboard();
@@ -65,25 +69,12 @@ function atualizarDashboard() {
   document.getElementById("dashPorDia").textContent = porDia > 0 ? porDia : 0;
 }
 
-async function carregarListaFL() {
-  try {
-    // Pede para o Apps Script a lista de itens da aba FL
-    const res = await _enviarViaGet({ acao: "listarFL" });
-    // Como o _enviarViaGet não lê a resposta (CORS), 
-    // vamos usar a solução de carregar um JSON externo ou um truque via DOM.
-    // Para manter a simplicidade, o Apps Script (lá embaixo) vai nos dar os dados.
-  } catch (e) {
-    console.warn("Não foi possível carregar a lista FL agora.");
-  }
-}
-
 async function bootstrap() {
   const loader = document.getElementById("loader");
   loader.hidden = false;
 
   try {
     await carregarDados();
-    // Carrega os produtos que estão na aba FL (simulação via localStorage por enquanto)
     const flSalvos = localStorage.getItem("consultaClusters.FL");
     if (flSalvos) _listaFL = new Set(JSON.parse(flSalvos));
   } catch (err) {
@@ -113,23 +104,36 @@ async function bootstrap() {
 
   document.getElementById("dashDias").addEventListener("input", atualizarDashboard);
 
+  // NOVO: Lógica de envio FL
   document.getElementById("btnApplyAllClusters").addEventListener("click", () => {
     if (modoFL) {
-      let selecionados = getSelecionados();
-      if (selecionados.length === 0) {
-        const ok = confirm("Nenhum item foi selecionado via checkbox. Deseja aplicar FORA DE LINHA em TODOS os produtos filtrados?");
-        if (!ok) return;
+      const checkMaster = document.getElementById("checkMasterFL").checked;
+      let selecionados = getSelecionados(); // Pega os marcados na tabela
+
+      // Se marcou o Checkbox Mestre, pega TODOS os filtrados
+      if (checkMaster) {
         selecionados = listarFiltrados().map(p => p.seqProd);
-      } else {
-        const ok = confirm(`Enviar ${selecionados.length} produto(s) selecionados para FORA DE LINHA?`);
-        if (!ok) return;
+        if (!confirm(`Marcar TODOS os ${selecionados.length} produtos filtrados como FORA DE LINHA?`)) return;
+      } 
+      // Se não marcou o Mestre, mas marcou itens na tabela
+      else if (selecionados.length > 0) {
+        if (!confirm(`Enviar ${selecionados.length} produto(s) selecionados na tabela para FORA DE LINHA?`)) return;
+      } 
+      // Se não marcou nada
+      else {
+        toast("Selecione produtos na tabela ou marque a caixa 'Marcar TODOS'.", "warn");
+        return;
       }
+
       if (selecionados.length > 0) {
-        // Atualiza a lista local FL para o dashboard contar certo imediatamente
         selecionados.forEach(seq => _listaFL.add(seq));
         localStorage.setItem("consultaClusters.FL", JSON.stringify([..._listaFL]));
+        
         aplicarMassaFL(selecionados);
         atualizarDashboard();
+        
+        // Desmarca o mestre após enviar para evitar duplo clique
+        document.getElementById("checkMasterFL").checked = false; 
       }
     } else {
       abrirBulk();

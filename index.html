@@ -12,7 +12,6 @@
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   
   <style>
-    /* Estilos adicionais para o Dashboard */
     .dashboard-grid {
       display: flex;
       flex-wrap: wrap;
@@ -68,13 +67,30 @@
       font-weight: 800;
       color: #0f172a;
     }
+    .dash-master-check {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #b02a2a;
+      background: #fee2e2;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid #fca5a5;
+    }
+    .dash-master-check input {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
   </style>
 </head>
 <body>
   <header class="app-header" role="banner">
     <div class="app-header__inner" style="flex-direction: column; align-items: stretch; gap: 10px;">
       
-      <!-- Topo: Título e Botões -->
       <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
         <div class="app-header__brand">
           <h1 class="app-header__title">Análise de Cluster</h1>
@@ -92,7 +108,6 @@
         </div>
       </div>
 
-      <!-- Dashboard (Respeita Filtros) -->
       <div class="dashboard-grid">
         <div class="dash-card">
           <span class="dash-label">TOTAL</span>
@@ -111,6 +126,14 @@
           <span id="dashFaltam" class="dash-value faltam">0</span>
         </div>
         
+        <!-- NOVO: CHECKBOX MESTRE PARA MODO FL -->
+        <div id="wrapMasterCheck" style="display:none;">
+          <label class="dash-master-check">
+            <input type="checkbox" id="checkMasterFL" />
+            Marcar TODOS os filtrados para Fora de Linha
+          </label>
+        </div>
+
         <div style="flex-grow: 1; text-align: right;">
           <div class="dash-input-group" style="justify-content: flex-end;">
             <span class="dash-label">Dias de Prazo:</span>
