@@ -1,15 +1,17 @@
 import "./config.js";
 import { carregarDados, getEstado } from "./data.js";
-import { inicializarFiltros, aplicarOverridesMap, temFiltroAtivo, contarFiltrados } from "./filters.js";
+import { inicializarFiltros, aplicarOverridesMap, temFiltroAtivo, contarFiltrados, listarFiltrados, getClustersAtuais } from "./filters.js";
 import { inicializarTabela, renderTabela, atualizarClustersVisiveis, getSelecionados, setModoFL } from "./table.js";
 import { inicializarModal, abrirModal, toast } from "./modal.js";
 import { inicializarBulk, abrirBulk, aplicarMassaFL } from "./bulk.js";
 import { exportarXLSX } from "./export.js";
 import { inicializarPolling, getMapaCluster } from "./polling.js";
+import { _enviarViaGet } from "./api.js"; // Importação para pegar a lista FL
 
 let modoFL = false;
+let _listaFL = new Set(); // Guarda os SEQ PRODs que estão na aba FL
 
-function atualizarBotoes() {
+function atualizarBotoesEStatus() {
   const btnBulk = document.getElementById("btnApplyAllClusters");
   const btnFL = document.getElementById("btnToggleFL");
   const thAction = document.getElementById("thAction");
@@ -17,21 +19,61 @@ function atualizarBotoes() {
   if (modoFL) {
     btnFL.textContent = "Sair do Modo FL";
     btnFL.classList.replace("btn--secondary", "btn--danger");
-    
-    // No modo FL, o botão se chama "Aplicar FL" e só liga se houver produtos filtrados na tela
     btnBulk.textContent = "Fora de Linha (Aplicar)";
     btnBulk.disabled = !(temFiltroAtivo() && contarFiltrados() > 0);
-    
-    // Esconde a coluna de Ação (Definir Cluster)
     if (thAction) thAction.style.display = "none";
   } else {
     btnFL.textContent = "Fora de Linha";
     btnFL.classList.replace("btn--danger", "btn--secondary");
-    
     btnBulk.textContent = "Aplicar clusters em massa";
     btnBulk.disabled = !(temFiltroAtivo() && contarFiltrados() > 0);
-    
     if (thAction) thAction.style.display = "";
+  }
+
+  atualizarDashboard();
+}
+
+function atualizarDashboard() {
+  const filtrados = listarFiltrados();
+  
+  let flCount = 0;
+  let feitosCount = 0;
+  let faltamCount = 0;
+
+  for (const p of filtrados) {
+    const isFL = _listaFL.has(p.seqProd);
+    const clusters = getClustersAtuais(p.seqProd);
+    const temCluster = clusters.length > 0;
+
+    if (isFL) {
+      flCount++;
+    } else if (temCluster) {
+      feitosCount++;
+    } else {
+      faltamCount++;
+    }
+  }
+
+  const total = filtrados.length;
+  const dias = parseInt(document.getElementById("dashDias").value, 10) || 1;
+  const porDia = Math.ceil(faltamCount / dias);
+
+  document.getElementById("dashTotal").textContent = total;
+  document.getElementById("dashFeitos").textContent = feitosCount;
+  document.getElementById("dashFL").textContent = flCount;
+  document.getElementById("dashFaltam").textContent = faltamCount;
+  document.getElementById("dashPorDia").textContent = porDia > 0 ? porDia : 0;
+}
+
+async function carregarListaFL() {
+  try {
+    // Pede para o Apps Script a lista de itens da aba FL
+    const res = await _enviarViaGet({ acao: "listarFL" });
+    // Como o _enviarViaGet não lê a resposta (CORS), 
+    // vamos usar a solução de carregar um JSON externo ou um truque via DOM.
+    // Para manter a simplicidade, o Apps Script (lá embaixo) vai nos dar os dados.
+  } catch (e) {
+    console.warn("Não foi possível carregar a lista FL agora.");
   }
 }
 
@@ -41,6 +83,9 @@ async function bootstrap() {
 
   try {
     await carregarDados();
+    // Carrega os produtos que estão na aba FL (simulação via localStorage por enquanto)
+    const flSalvos = localStorage.getItem("consultaClusters.FL");
+    if (flSalvos) _listaFL = new Set(JSON.parse(flSalvos));
   } catch (err) {
     console.error(err);
     toast("Erro ao carregar BASE.xlsx: " + err.message, "error");
@@ -49,35 +94,28 @@ async function bootstrap() {
   }
   loader.hidden = true;
 
-  inicializarTabela({ 
-    onDefineCluster: abrirModal, 
-    onCheckChange: atualizarBotoes 
-  });
+  inicializarTabela({ onDefineCluster: abrirModal, onCheckChange: atualizarBotoesEStatus });
 
   inicializarFiltros(() => {
     const { produtos } = getEstado();
     renderTabela(produtos);
-    atualizarBotoes();
+    atualizarBotoesEStatus();
   });
 
-  inicializarModal({ onSaved: () => atualizarClustersVisiveis() });
-  inicializarBulk({ onSaved: () => atualizarClustersVisiveis() });
+  inicializarModal({ onSaved: () => { atualizarClustersVisiveis(); atualizarBotoesEStatus(); } });
+  inicializarBulk({ onSaved: () => { atualizarClustersVisiveis(); atualizarBotoesEStatus(); } });
 
-  // Botão de Toggle do Modo FL
   document.getElementById("btnToggleFL").addEventListener("click", () => {
     modoFL = !modoFL;
     setModoFL(modoFL);
-    atualizarBotoes();
+    atualizarBotoesEStatus();
   });
 
-  // Ação do Botão Principal (Massa)
+  document.getElementById("dashDias").addEventListener("input", atualizarDashboard);
+
   document.getElementById("btnApplyAllClusters").addEventListener("click", () => {
     if (modoFL) {
-      // Pega APENAS os que estão com o checkbox marcado
       let selecionados = getSelecionados();
-      
-      // Se o usuário não marcou nenhum checkbox, mas aplicou um filtro, 
-      // aplicamos em todos os filtrados (para facilitar a vida)
       if (selecionados.length === 0) {
         const ok = confirm("Nenhum item foi selecionado via checkbox. Deseja aplicar FORA DE LINHA em TODOS os produtos filtrados?");
         if (!ok) return;
@@ -86,12 +124,14 @@ async function bootstrap() {
         const ok = confirm(`Enviar ${selecionados.length} produto(s) selecionados para FORA DE LINHA?`);
         if (!ok) return;
       }
-      
       if (selecionados.length > 0) {
+        // Atualiza a lista local FL para o dashboard contar certo imediatamente
+        selecionados.forEach(seq => _listaFL.add(seq));
+        localStorage.setItem("consultaClusters.FL", JSON.stringify([..._listaFL]));
         aplicarMassaFL(selecionados);
+        atualizarDashboard();
       }
     } else {
-      // Modo Normal: abre o modal de clusters
       abrirBulk();
     }
   });
@@ -107,12 +147,12 @@ async function bootstrap() {
       window.__clusterMap = mapa;
       aplicarOverridesMap(mapa);
       atualizarClustersVisiveis();
-      atualizarBotoes();
+      atualizarBotoesEStatus();
     },
   });
 
   window.__clusterMap = getMapaCluster();
-  atualizarBotoes();
+  atualizarBotoesEStatus();
 }
 
 document.addEventListener("DOMContentLoaded", bootstrap);

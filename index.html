@@ -3,33 +3,124 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Consulta de Clusters — Gestão de Produtos</title>
+  <title>Análise de Cluster</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232a4d8f'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/components.css" />
   <link rel="stylesheet" href="css/layout.css" />
   <link rel="stylesheet" href="css/tooltip.css" />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <style>
+    /* Estilos adicionais para o Dashboard */
+    .dashboard-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      margin-top: 10px;
+      background: #f8fafc;
+      padding: 12px 16px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      align-items: center;
+    }
+    .dash-card {
+      display: flex;
+      flex-direction: column;
+      min-width: 80px;
+    }
+    .dash-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      color: #64748b;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .dash-value {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .dash-value.total { color: #2a4d8f; }
+    .dash-value.feitos { color: #1e7a46; }
+    .dash-value.fl { color: #b02a2a; }
+    .dash-value.faltam { color: #8a6d1f; }
+    
+    .dash-input-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #fff;
+      padding: 4px 8px;
+      border-radius: 4px;
+      border: 1px solid #cbd5e1;
+    }
+    .dash-input-group input {
+      width: 50px;
+      padding: 4px;
+      border: 1px solid #cbd5e1;
+      border-radius: 4px;
+      text-align: center;
+      font-weight: 600;
+    }
+    .dash-calc {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #0f172a;
+    }
+  </style>
 </head>
 <body>
   <header class="app-header" role="banner">
-    <div class="app-header__inner">
-      <div class="app-header__brand">
-        <h1 class="app-header__title">Consulta de Clusters</h1>
-        <p class="app-header__subtitle">Gestão de produtos por loja · Base + Vendas + Decisão</p>
+    <div class="app-header__inner" style="flex-direction: column; align-items: stretch; gap: 10px;">
+      
+      <!-- Topo: Título e Botões -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div class="app-header__brand">
+          <h1 class="app-header__title">Análise de Cluster</h1>
+        </div>
+        <div class="app-header__actions">
+          <button id="btnToggleFL" class="btn btn--secondary" type="button">
+            Fora de Linha
+          </button>
+          <button id="btnApplyAllClusters" class="btn btn--primary" type="button" disabled>
+            Aplicar clusters em massa
+          </button>
+          <button id="btnExport" class="btn btn--ghost" type="button">
+            Exportar XLSX
+          </button>
+        </div>
       </div>
-      <div class="app-header__actions">
-        <!-- NOVO BOTÃO: MODO FORA DE LINHA -->
-        <button id="btnToggleFL" class="btn btn--secondary" type="button">
-          Fora de Linha
-        </button>
-        <button id="btnApplyAllClusters" class="btn btn--primary" type="button" disabled>
-          Aplicar clusters em massa
-        </button>
-        <button id="btnExport" class="btn btn--ghost" type="button">
-          Exportar XLSX
-        </button>
+
+      <!-- Dashboard (Respeita Filtros) -->
+      <div class="dashboard-grid">
+        <div class="dash-card">
+          <span class="dash-label">TOTAL</span>
+          <span id="dashTotal" class="dash-value total">0</span>
+        </div>
+        <div class="dash-card">
+          <span class="dash-label">FEITOS</span>
+          <span id="dashFeitos" class="dash-value feitos">0</span>
+        </div>
+        <div class="dash-card">
+          <span class="dash-label">FORA DE LINHA</span>
+          <span id="dashFL" class="dash-value fl">0</span>
+        </div>
+        <div class="dash-card">
+          <span class="dash-label">FALTAM</span>
+          <span id="dashFaltam" class="dash-value faltam">0</span>
+        </div>
+        
+        <div style="flex-grow: 1; text-align: right;">
+          <div class="dash-input-group" style="justify-content: flex-end;">
+            <span class="dash-label">Dias de Prazo:</span>
+            <input type="number" id="dashDias" min="1" value="10" />
+            <span class="dash-label">| POR DIA:</span>
+            <span id="dashPorDia" class="dash-calc">0</span>
+          </div>
+        </div>
       </div>
+
     </div>
   </header>
 
@@ -94,11 +185,9 @@
         <table id="productsTable" class="table" aria-describedby="results-title">
           <thead>
             <tr>
-              <!-- COLUNA NOVA DE CHECKBOX (Só aparece no modo FL) -->
               <th scope="col" id="thSelectAll" style="display:none; width: 40px; text-align: center;">
                 <input type="checkbox" id="checkAll" title="Selecionar todos da página" />
               </th>
-              
               <th scope="col" data-sort="seqProd" tabindex="0">SEQ PROD</th>
               <th scope="col" data-sort="desc" tabindex="0">DESC</th>
               <th scope="col" data-sort="embalagem" tabindex="0">EMBALAGEM</th>
@@ -112,12 +201,8 @@
           </thead>
           <tbody id="tableBody"></tbody>
         </table>
-
-        <div id="emptyState" class="empty" hidden>
-          <p>Nenhum produto encontrado.</p>
-        </div>
+        <div id="emptyState" class="empty" hidden><p>Nenhum produto encontrado.</p></div>
       </div>
-
       <nav id="pagination" class="pagination" aria-label="Paginação"></nav>
     </section>
   </main>
@@ -126,7 +211,6 @@
     <span id="pollStatus" class="app-footer__status">Aguardando atualização…</span>
   </footer>
 
-  <!-- Modal Individual -->
   <div id="modalCluster" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal__backdrop" data-close="modal"></div>
     <div class="modal__panel" role="document">
@@ -141,7 +225,6 @@
     </div>
   </div>
 
-  <!-- Modal em Massa -->
   <div id="modalBulk" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal__backdrop" data-close="modalBulk"></div>
     <div class="modal__panel" role="document">
