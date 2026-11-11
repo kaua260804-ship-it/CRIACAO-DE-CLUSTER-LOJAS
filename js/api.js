@@ -1,7 +1,6 @@
 // Camada de comunicação com o Apps Script.
+// Usa técnica de JSONP via imagem para driblar o CORS e evitar body limpo.
 import "./config.js";
-
-const TIMEOUT_MS = 30000;
 
 function getUrlBase() {
   const url = window.APP_CONFIG && window.APP_CONFIG.APPS_SCRIPT_URL;
@@ -11,38 +10,35 @@ function getUrlBase() {
   return url;
 }
 
-async function _post(payload) {
-  // Usar URLSearchParams é a forma mais segura de enviar dados via no-cors
-  // O Apps Script vai receber isso em e.parameter.payload
-  const formData = new URLSearchParams();
-  formData.append("payload", JSON.stringify(payload));
+// Função exportada para o bulk.js poder chamar no modo FL
+export function _enviarViaGet(payload) {
+  return new Promise((resolve, reject) => {
+    const base = getUrlBase();
+    const jsonStr = JSON.stringify(payload);
+    const encoded = encodeURIComponent(jsonStr);
+    
+    const img = new Image();
+    let timeout = setTimeout(() => {
+      img.src = ""; 
+      reject(new Error("Tempo esgotado ao salvar."));
+    }, 30000);
 
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-  
-  try {
-    await fetch(getUrlBase(), {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formData.toString(),
-      signal: ctrl.signal,
-    });
-    return { ok: true };
-  } catch (e) {
-    throw new Error("Falha de rede ao salvar.");
-  } finally {
-    clearTimeout(t);
-  }
+    img.onload = img.onerror = () => {
+      clearTimeout(timeout);
+      resolve({ ok: true });
+    };
+
+    img.src = `${base}?acao=receberJson&p=${encoded}&t=${Date.now()}`;
+  });
 }
 
 async function salvar(payload) {
-  return _post({ acao: "salvar", ...payload });
+  return _enviarViaGet({ acao: "salvar", ...payload });
 }
 
 async function salvarLote(itens) {
   if (!Array.isArray(itens) || itens.length === 0) return { ok: true, total: 0 };
-  return _post({ acao: "salvarLote", itens });
+  return _enviarViaGet({ acao: "salvarLote", itens });
 }
 
-export const api = { salvar, salvarLote };
+export const api = { salvar, salvarLote, _enviarViaGet };

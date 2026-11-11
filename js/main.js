@@ -1,24 +1,38 @@
-// Bootstrap: inicializa módulos e liga eventos.
 import "./config.js";
 import { carregarDados, getEstado } from "./data.js";
-import {
-  inicializarFiltros, aplicarOverridesMap,
-  temFiltroAtivo, contarFiltrados,
-} from "./filters.js";
-import { inicializarTabela, renderTabela, atualizarClustersVisiveis } from "./table.js";
+import { inicializarFiltros, aplicarOverridesMap, temFiltroAtivo, contarFiltrados } from "./filters.js";
+import { inicializarTabela, renderTabela, atualizarClustersVisiveis, getSelecionados, setModoFL } from "./table.js";
 import { inicializarModal, abrirModal, toast } from "./modal.js";
-import { inicializarBulk, abrirBulk } from "./bulk.js";
+import { inicializarBulk, abrirBulk, aplicarMassaFL } from "./bulk.js";
 import { exportarXLSX } from "./export.js";
 import { inicializarPolling, getMapaCluster } from "./polling.js";
 
-function atualizarBotaoBulk() {
-  const btn = document.getElementById("btnApplyAllClusters");
-  if (!btn) return;
-  const habilitado = temFiltroAtivo() && contarFiltrados() > 0;
-  btn.disabled = !habilitado;
-  btn.title = habilitado
-    ? "Aplicar clusters em massa nos produtos filtrados"
-    : "Aplique algum filtro primeiro";
+let modoFL = false;
+
+function atualizarBotoes() {
+  const btnBulk = document.getElementById("btnApplyAllClusters");
+  const btnFL = document.getElementById("btnToggleFL");
+  const thAction = document.getElementById("thAction");
+
+  if (modoFL) {
+    btnFL.textContent = "Sair do Modo FL";
+    btnFL.classList.replace("btn--secondary", "btn--danger");
+    
+    // No modo FL, o botão se chama "Aplicar FL" e só liga se houver produtos filtrados na tela
+    btnBulk.textContent = "Fora de Linha (Aplicar)";
+    btnBulk.disabled = !(temFiltroAtivo() && contarFiltrados() > 0);
+    
+    // Esconde a coluna de Ação (Definir Cluster)
+    if (thAction) thAction.style.display = "none";
+  } else {
+    btnFL.textContent = "Fora de Linha";
+    btnFL.classList.replace("btn--danger", "btn--secondary");
+    
+    btnBulk.textContent = "Aplicar clusters em massa";
+    btnBulk.disabled = !(temFiltroAtivo() && contarFiltrados() > 0);
+    
+    if (thAction) thAction.style.display = "";
+  }
 }
 
 async function bootstrap() {
@@ -35,29 +49,52 @@ async function bootstrap() {
   }
   loader.hidden = true;
 
-  inicializarTabela({ onDefineCluster: abrirModal });
+  inicializarTabela({ 
+    onDefineCluster: abrirModal, 
+    onCheckChange: atualizarBotoes 
+  });
 
   inicializarFiltros(() => {
     const { produtos } = getEstado();
     renderTabela(produtos);
-    atualizarBotaoBulk();
+    atualizarBotoes();
   });
 
-  inicializarModal({
-    onSaved: () => {
-      atualizarClustersVisiveis();
-      atualizarBotaoBulk();
-    },
+  inicializarModal({ onSaved: () => atualizarClustersVisiveis() });
+  inicializarBulk({ onSaved: () => atualizarClustersVisiveis() });
+
+  // Botão de Toggle do Modo FL
+  document.getElementById("btnToggleFL").addEventListener("click", () => {
+    modoFL = !modoFL;
+    setModoFL(modoFL);
+    atualizarBotoes();
   });
 
-  inicializarBulk({
-    onSaved: () => {
-      atualizarClustersVisiveis();
-      atualizarBotaoBulk();
-    },
+  // Ação do Botão Principal (Massa)
+  document.getElementById("btnApplyAllClusters").addEventListener("click", () => {
+    if (modoFL) {
+      // Pega APENAS os que estão com o checkbox marcado
+      let selecionados = getSelecionados();
+      
+      // Se o usuário não marcou nenhum checkbox, mas aplicou um filtro, 
+      // aplicamos em todos os filtrados (para facilitar a vida)
+      if (selecionados.length === 0) {
+        const ok = confirm("Nenhum item foi selecionado via checkbox. Deseja aplicar FORA DE LINHA em TODOS os produtos filtrados?");
+        if (!ok) return;
+        selecionados = listarFiltrados().map(p => p.seqProd);
+      } else {
+        const ok = confirm(`Enviar ${selecionados.length} produto(s) selecionados para FORA DE LINHA?`);
+        if (!ok) return;
+      }
+      
+      if (selecionados.length > 0) {
+        aplicarMassaFL(selecionados);
+      }
+    } else {
+      // Modo Normal: abre o modal de clusters
+      abrirBulk();
+    }
   });
-
-  document.getElementById("btnApplyAllClusters").addEventListener("click", abrirBulk);
 
   document.getElementById("btnExport").addEventListener("click", () => {
     const { produtos } = getEstado();
@@ -70,12 +107,12 @@ async function bootstrap() {
       window.__clusterMap = mapa;
       aplicarOverridesMap(mapa);
       atualizarClustersVisiveis();
-      atualizarBotaoBulk();
+      atualizarBotoes();
     },
   });
 
   window.__clusterMap = getMapaCluster();
-  atualizarBotaoBulk();
+  atualizarBotoes();
 }
 
 document.addEventListener("DOMContentLoaded", bootstrap);

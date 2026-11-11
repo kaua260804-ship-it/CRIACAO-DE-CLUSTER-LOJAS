@@ -1,6 +1,3 @@
-// Modal "Aplicar clusters em massa" + orquestração do envio em lote.
-// - Abre com os 5 tipos de cluster (checkboxes), todos desmarcados.
-// - Ao aplicar: confirm() → envia via GET mascarado → atualiza UI local.
 import { api } from "./api.js";
 import {
   listarFiltrados, getTiposCluster, getClustersAtuais,
@@ -55,7 +52,6 @@ export function abrirBulk() {
     </label>
   `).join("");
 
-  // Reset do estado do modal
   document.getElementById("modalBulkApply").disabled = true;
   document.getElementById("modalBulkApply").textContent = "Aplicar em massa";
   document.getElementById("modalBulkProgressWrap").hidden = true;
@@ -102,9 +98,8 @@ async function aplicar() {
   btnCancel.disabled = true;
   progressWrap.hidden = false;
 
-  // Monta os itens já com o cluster final (merge) calculado
   const itens = [];
-  const updatesLocais = []; // { seqProd, clustersFinais, statusStr }
+  const updatesLocais = [];
   
   for (const p of filtrados) {
     const antigos = getClustersAtuais(p.seqProd);
@@ -120,14 +115,13 @@ async function aplicar() {
       subgrupo: p.subgrupo,
       subgrupo1: p.subgrupo1,
       subgrupo2: p.subgrupo2,
-      status: statusStr, // Texto com vírgulas
-      clusters: finais,  // <--- ENVIA O ARRAY TAMBÉM
+      status: statusStr,
+      clusters: finais,
     });
     
     updatesLocais.push({ seqProd: p.seqProd, clustersFinais: finais, statusStr });
   }
 
-  // Animação da barra: como o POST é único, a barra avança em "etapas" para dar feedback.
   let feitos = 0;
   const setProgress = (k) => {
     feitos = Math.min(n, k);
@@ -137,7 +131,6 @@ async function aplicar() {
   };
   setProgress(0);
 
-  // Avança a barra visualmente em ~n/20 passos enquanto a requisição está em andamento
   const passo = Math.max(1, Math.ceil(n / 20));
   const anim = setInterval(() => {
     if (feitos < n - 1) setProgress(feitos + passo);
@@ -148,7 +141,6 @@ async function aplicar() {
     clearInterval(anim);
     setProgress(n);
 
-    // Atualiza estado local de todos
     for (const u of updatesLocais) {
       setClustersAtuais(u.seqProd, u.clustersFinais);
       salvarNoStorage(u.seqProd, u.statusStr);
@@ -170,6 +162,44 @@ async function aplicar() {
   } finally {
     btnApply.disabled = false;
     btnCancel.disabled = false;
+  }
+}
+
+export async function aplicarMassaFL(seqsSelecionados) {
+  const btn = document.getElementById("btnApplyAllClusters");
+  const txtOriginal = btn.textContent;
+  
+  btn.disabled = true;
+  btn.textContent = "Enviando...";
+
+  const itens = [];
+  for (const seq of seqsSelecionados) {
+    const p = getProduto(seq);
+    if (p) {
+      itens.push({
+        seqProd: p.seqProd,
+        desc: p.desc,
+        embalagem: p.embalagem,
+        categoria: p.categoria,
+        grupo: p.grupo,
+        subgrupo: p.subgrupo,
+        subgrupo1: p.subgrupo1,
+        subgrupo2: p.subgrupo2,
+        status: "FORA DE LINHA",
+      });
+    }
+  }
+
+  try {
+    // Usa o método do seu api.js
+    await api._enviarViaGet({ acao: "salvarFL", itens });
+    toast(`${itens.length} produto(s) enviados para FORA DE LINHA.`, "success");
+  } catch (err) {
+    console.error(err);
+    toast("Falha ao enviar: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = txtOriginal;
   }
 }
 

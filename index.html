@@ -4,16 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Consulta de Clusters — Gestão de Produtos</title>
-
-  <!-- Favicon inline (evita 404 no console) -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%232a4d8f'/%3E%3C/svg%3E" />
-
   <link rel="stylesheet" href="css/base.css" />
   <link rel="stylesheet" href="css/components.css" />
   <link rel="stylesheet" href="css/layout.css" />
   <link rel="stylesheet" href="css/tooltip.css" />
-
-  <!-- SheetJS (leitura e exportação XLSX). Carregado antes de main.js rodar. -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
 <body>
@@ -24,10 +19,14 @@
         <p class="app-header__subtitle">Gestão de produtos por loja · Base + Vendas + Decisão</p>
       </div>
       <div class="app-header__actions">
-        <button id="btnApplyAllClusters" class="btn btn--primary" type="button" disabled aria-label="Aplicar clusters em massa nos produtos filtrados">
+        <!-- NOVO BOTÃO: MODO FORA DE LINHA -->
+        <button id="btnToggleFL" class="btn btn--secondary" type="button">
+          Fora de Linha
+        </button>
+        <button id="btnApplyAllClusters" class="btn btn--primary" type="button" disabled>
           Aplicar clusters em massa
         </button>
-        <button id="btnExport" class="btn btn--ghost" type="button" aria-label="Exportar resultados em XLSX">
+        <button id="btnExport" class="btn btn--ghost" type="button">
           Exportar XLSX
         </button>
       </div>
@@ -37,28 +36,23 @@
   <main class="app-main" role="main">
     <section class="filters" aria-labelledby="filters-title">
       <h2 id="filters-title" class="filters__title">Filtros</h2>
-
       <form id="filtersForm" class="filters__grid" onsubmit="return false;">
         <div class="field">
           <label for="fSearch">Buscar</label>
           <input id="fSearch" type="search" placeholder="DESC, DESC RED ou SEQ PROD" autocomplete="off" />
         </div>
-
         <div class="field">
           <label for="fCategoria">Categoria</label>
           <select id="fCategoria"><option value="">TODAS</option></select>
         </div>
-
         <div class="field">
           <label for="fGrupo">Grupo</label>
           <select id="fGrupo"><option value="">TODOS</option></select>
         </div>
-
         <div class="field">
           <label for="fSubgrupo">Subgrupo</label>
           <select id="fSubgrupo"><option value="">TODOS</option></select>
         </div>
-
         <div class="field">
           <label for="fStatus">Status</label>
           <select id="fStatus">
@@ -67,7 +61,6 @@
             <option value="SEM VENDA">SEM VENDA</option>
           </select>
         </div>
-
         <div class="field">
           <label for="fCluster">Cluster</label>
           <select id="fCluster">
@@ -80,7 +73,6 @@
             <option value="SEM CLUSTER">SEM CLUSTER</option>
           </select>
         </div>
-
         <div class="field field--actions">
           <button id="btnClear" type="button" class="btn btn--secondary">Limpar filtros</button>
         </div>
@@ -102,6 +94,11 @@
         <table id="productsTable" class="table" aria-describedby="results-title">
           <thead>
             <tr>
+              <!-- COLUNA NOVA DE CHECKBOX (Só aparece no modo FL) -->
+              <th scope="col" id="thSelectAll" style="display:none; width: 40px; text-align: center;">
+                <input type="checkbox" id="checkAll" title="Selecionar todos da página" />
+              </th>
+              
               <th scope="col" data-sort="seqProd" tabindex="0">SEQ PROD</th>
               <th scope="col" data-sort="desc" tabindex="0">DESC</th>
               <th scope="col" data-sort="embalagem" tabindex="0">EMBALAGEM</th>
@@ -110,10 +107,10 @@
               <th scope="col" data-sort="subgrupo" tabindex="0">SUBGRUPO</th>
               <th scope="col" data-sort="status" tabindex="0">STATUS</th>
               <th scope="col" data-sort="cluster" tabindex="0">CLUSTER</th>
-              <th scope="col">AÇÃO</th>
+              <th scope="col" id="thAction">AÇÃO</th>
             </tr>
           </thead>
-          <tbody id="tableBody"><!-- linhas --></tbody>
+          <tbody id="tableBody"></tbody>
         </table>
 
         <div id="emptyState" class="empty" hidden>
@@ -129,16 +126,14 @@
     <span id="pollStatus" class="app-footer__status">Aguardando atualização…</span>
   </footer>
 
-  <!-- Modal: Definir cluster (individual) -->
-  <div id="modalCluster" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalClusterTitle">
+  <!-- Modal Individual -->
+  <div id="modalCluster" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal__backdrop" data-close="modal"></div>
     <div class="modal__panel" role="document">
       <h3 id="modalClusterTitle" class="modal__title">Definir cluster</h3>
       <p id="modalClusterProduct" class="modal__hint"></p>
-
       <label class="modal__label">Tipo / Cluster (pode escolher vários)</label>
-      <div id="modalClusterChecks" class="modal__checks" role="group" aria-label="Clusters do produto"></div>
-
+      <div id="modalClusterChecks" class="modal__checks" role="group"></div>
       <div class="modal__actions">
         <button id="modalCancel" type="button" class="btn btn--secondary">Cancelar</button>
         <button id="modalSave" type="button" class="btn btn--primary">Salvar</button>
@@ -146,21 +141,18 @@
     </div>
   </div>
 
-  <!-- Modal: Aplicar clusters em massa -->
-  <div id="modalBulk" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="modalBulkTitle">
+  <!-- Modal em Massa -->
+  <div id="modalBulk" class="modal" hidden aria-hidden="true" role="dialog" aria-modal="true">
     <div class="modal__backdrop" data-close="modalBulk"></div>
     <div class="modal__panel" role="document">
       <h3 id="modalBulkTitle" class="modal__title">Aplicar clusters em massa</h3>
       <p id="modalBulkHint" class="modal__hint"></p>
-
       <label class="modal__label">Quais clusters aplicar (somam aos já existentes)</label>
-      <div id="modalBulkChecks" class="modal__checks" role="group" aria-label="Clusters a aplicar em massa"></div>
-
+      <div id="modalBulkChecks" class="modal__checks" role="group"></div>
       <div id="modalBulkProgressWrap" class="progress" hidden>
         <div id="modalBulkProgressBar" class="progress__bar" style="width:0%"></div>
         <span id="modalBulkProgressText" class="progress__text">Salvando 0/0…</span>
       </div>
-
       <div class="modal__actions">
         <button id="modalBulkCancel" type="button" class="btn btn--secondary">Cancelar</button>
         <button id="modalBulkApply" type="button" class="btn btn--primary" disabled>Aplicar em massa</button>
@@ -168,12 +160,8 @@
     </div>
   </div>
 
-  <!-- Container de toasts -->
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
-
-  <!-- Tooltip global (segue o elemento alvo) -->
   <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
-
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
