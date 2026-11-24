@@ -41,7 +41,7 @@ export function abrirBulk() {
 
   const modal = document.getElementById("modalBulk");
   document.getElementById("modalBulkHint").textContent =
-    `Serão afetados ${filtrados.length} produto(s). Os clusters escolhidos serão SOMADOS aos já existentes.`;
+    `Serão afetados ${filtrados.length} produto(s). Os clusters escolhidos vão SUBSTITUIR os clusters atuais de cada produto.`;
 
   const tipos = getTiposCluster();
   const container = document.getElementById("modalBulkChecks");
@@ -85,7 +85,7 @@ async function aplicar() {
 
   const confirmMsg =
     `Aplicar ${escolhidos.join(", ")} em ${n} produto(s)?\n\n` +
-    `Os clusters serão SOMADOS aos já existentes (não remove nenhum).`;
+    `⚠️ Os clusters atuais de cada produto serão REMOVIDOS e substituídos pelos escolhidos.`;
   if (!confirm(confirmMsg)) return;
 
   const btnApply = document.getElementById("modalBulkApply");
@@ -100,12 +100,12 @@ async function aplicar() {
 
   const itens = [];
   const updatesLocais = [];
-  
+
   for (const p of filtrados) {
-    const antigos = getClustersAtuais(p.seqProd);
-    const finais = _normalizarLista([...antigos, ...escolhidos]);
+    // SUBSTITUIÇÃO: usa apenas os escolhidos, ignora os antigos
+    const finais = _normalizarLista(escolhidos);
     const statusStr = finais.join(",");
-    
+
     itens.push({
       seqProd: p.seqProd,
       desc: p.desc,
@@ -118,7 +118,7 @@ async function aplicar() {
       status: statusStr,
       clusters: finais,
     });
-    
+
     updatesLocais.push({ seqProd: p.seqProd, clustersFinais: finais, statusStr });
   }
 
@@ -152,7 +152,7 @@ async function aplicar() {
     atualizarClustersVisiveis();
     _onSaved();
 
-    toast(`${n} produto(s) enviados para a planilha com sucesso.`, "success");
+    toast(`${n} produto(s) atualizados na planilha com sucesso.`, "success");
     fecharBulk();
   } catch (err) {
     clearInterval(anim);
@@ -168,7 +168,7 @@ async function aplicar() {
 export async function aplicarMassaFL(seqsSelecionados) {
   const btn = document.getElementById("btnApplyAllClusters");
   const txtOriginal = btn.textContent;
-  
+
   btn.disabled = true;
   btn.textContent = "Enviando...";
 
